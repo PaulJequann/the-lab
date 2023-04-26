@@ -1,0 +1,63 @@
+---
+- hosts: surface-hosts
+  gather_facts: true
+  name: "configure surface host"
+  become: true
+  vars:
+    logind_conf_path: "/etc/systemd/logind.conf"
+
+  tasks:
+    - name: Disable suspend on lid close
+      lineinfile:
+        path: "{{ logind_conf_path }}"
+        regexp: "^#HandleLidSwitch="
+        line: "HandleLidSwitch=ignore"
+        state: present
+        backup: true
+      notify: "restart logind"
+
+    - name: Update sleep on lid close configuration
+      lineinfile:
+        path: "{{ logind_conf_path }}"
+        regexp: "^#HandleLidSwitchch"
+        line: "HandleLidSwitchch=ignore"
+        state: present
+      notify: "restart logind"
+
+    - name: Create screen-off service file
+      copy:
+        dest: /etc/systemd/system/screen-off.service
+        content: |
+          [Unit]
+          Description=Enable virtual console blanking
+
+          [Service]
+          Type=oneshot
+          Environment=TERM=linux
+          StandardOutput=tty
+          TTYPath=/dev/console
+          ExecStart=/usr/bin/setterm -blank 1
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: true
+
+    - name: Start screen-off service
+      systemd:
+        name: screen-off.service
+        state: started
+
+    - name: Enable screen-off service at boot
+      systemd:
+        name: screen-off.service
+        enabled: true
+
+  handlers:
+    - name: restart logind
+      service:
+        name: systemd-logind
+        state: restarted
+      listen: "restart logind"

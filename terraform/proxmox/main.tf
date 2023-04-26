@@ -1,0 +1,156 @@
+data "terraform_remote_state" "network" {
+  backend = "remote"
+
+  config = {
+    hostname     = "app.terraform.io"
+    organization = "pauljequann"
+
+    workspaces = {
+      name = "homelab-unifi"
+    }
+  }
+}
+
+module "rocket-1" {
+  source = "./modules/node"
+
+  node_name     = "rocket-1"
+  target_node   = "jayden"
+  template_name = var.template_name
+
+  ciuser       = var.ciuser
+  cipassword   = var.cipassword
+  ssh_key_file = var.ssh_key_file
+}
+
+module "rocket-2" {
+  source = "./modules/node"
+
+  node_name     = "rocket-2"
+  target_node   = "gpop"
+  template_name = var.template_name
+
+  ciuser       = var.ciuser
+  cipassword   = var.cipassword
+  ssh_key_file = var.ssh_key_file
+}
+
+module "rocket-3" {
+  source = "./modules/node"
+
+  node_name     = "rocket-3"
+  target_node   = "eyana"
+  template_name = var.template_name
+
+  ciuser       = var.ciuser
+  cipassword   = var.cipassword
+  ssh_key_file = var.ssh_key_file
+}
+
+module "kk-1" {
+  source = "./modules/node"
+
+  node_name     = "kk-1"
+  target_node   = "cedes"
+  template_name = var.template_name
+
+  ciuser       = var.ciuser
+  cipassword   = var.cipassword
+  ssh_key_file = var.ssh_key_file
+}
+
+module "kk-2" {
+  source = "./modules/node"
+
+  node_name     = "kk-2"
+  target_node   = "eyana"
+  template_name = var.template_name
+
+  ciuser       = var.ciuser
+  cipassword   = var.cipassword
+  ssh_key_file = var.ssh_key_file
+}
+
+module "kk-3" {
+  source = "./modules/node"
+
+  node_name     = "kk-3"
+  target_node   = "jayden"
+  template_name = var.template_name
+
+  ciuser       = var.ciuser
+  cipassword   = var.cipassword
+  ssh_key_file = var.ssh_key_file
+}
+
+# resource "proxmox_vm_qemu" "control_plane" {
+#   count       = length(var.server_nodes)
+#   name        = "rocket-${count.index + 1}"
+#   target_node = var.server_nodes[count.index].target_node
+
+#   clone = var.template_name
+
+#   os_type  = "cloud-init"
+#   cores    = 2
+#   sockets  = "1"
+#   cpu      = "host"
+#   memory   = 4098
+#   scsihw   = "virtio-scsi-pci"
+#   bootdisk = "scsi0"
+
+#   disk {
+#     size     = "20G"
+#     type     = "scsi"
+#     storage  = "local-lvm"
+#     iothread = 1
+#   }
+
+#   network {
+#     model  = "virtio"
+#     bridge = "vmbr0"
+#     # tag    = data.terraform_remote_state.network.outputs.unifi_networks["lab-"].vlan_id
+#   }
+
+#   # cloud-init settings
+#   # adjust the ip and gateway addresses as needed
+#   ciuser     = var.ciuser
+#   cipassword = var.cipassword
+#   ipconfig0 = "ip=dhcp"
+#   # ipconfig0 = "ip=${cidrhost(data.terraform_remote_state.network.outputs.unifi_networks["lab-internal"].subnet, 30 + count.index)}/24, gw=${cidrhost(data.terraform_remote_state.network.outputs.unifi_networks["lab-internal"].subnet, 1)}"
+#   sshkeys = file("${var.ssh_key_file}")
+# }
+
+# resource "proxmox_vm_qemu" "worker_nodes" {
+#   for_each    = toset(var.pm_nodes)
+#   name        = "worker-${each.value}"
+#   target_node = each.value
+
+#   clone = var.template_name
+
+#   os_type  = "cloud-init"
+#   cores    = 2
+#   sockets  = "1"
+#   cpu      = "host"
+#   memory   = 4098
+#   scsihw   = "virtio-scsi-pci"
+#   bootdisk = "scsi0"
+
+#   disk {
+#     size     = "20G"
+#     type     = "scsi"
+#     storage  = "local-lvm"
+#     iothread = 1
+#   }
+
+#   network {
+#     model  = "virtio"
+#     bridge = "vmbr0"
+#   }
+
+#   # cloud-init settings
+#   # adjust the ip and gateway addresses as needed
+#   ciuser     = var.ciuser
+#   cipassword = var.cipassword
+#   ipconfig0  = "ip=dhcp"
+#   sshkeys    = file("${var.ssh_key_file}")
+# }
