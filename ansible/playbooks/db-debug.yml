@@ -1,0 +1,9 @@
+- hosts: dbs
+  gather_facts: true
+  become: true
+  name: "DB Debugging"
+
+  tasks:
+    - name: Debug MySQL connection string
+      debug:
+        var: "mysql://{{ db_k3s_user }}:{{ db_k3s_password }}@tcp({{ groups['dbs'][0] | map('extract', hostvars) | map(attribute='ansible_host') | first }}:3306)/{{ db_k3s_database }}"

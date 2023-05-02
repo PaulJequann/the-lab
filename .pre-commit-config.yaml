@@ -12,3 +12,17 @@ repos:
     rev: v0.1.21
     hooks:
       - id: terraform-fmt
+
+  - repo: https://github.com/onedr0p/sops-pre-commit
+    rev: v2.1.0
+    hooks:
+      - id: forbid-secrets
+        exclude: |
+          (?x)^(
+              tmpl/kubernetes/cloudflare-ddns-secret.sops.yaml |
+              tmpl/kubernetes/cluster-secrets.sops.yaml |
+              tmpl/kubernetes/weave-gitops-secret.sops.yaml |
+              tmpl/kubernetes/cert-manager-secret.sops.yaml |
+              tmpl/kubernetes/external-dns-secret.sops.yaml |
+              tmpl/kubernetes/github-webhook-token-secret.sops.yaml
+          )$

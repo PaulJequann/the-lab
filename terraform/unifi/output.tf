@@ -1,6 +1,7 @@
 output "unifi_networks" {
   value = {
     for network in unifi_network.networks : network.name => {
+      network_id = network.id
       purpose    = network.purpose
       subnet     = network.subnet
       vlan_id    = network.vlan_id

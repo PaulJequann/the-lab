@@ -1,0 +1,76 @@
+---
+- hosts: dbs
+  gather_facts: true
+  become: true
+  name: "Configure Galera cluster"
+
+  tasks:
+    - name: setup_cluster | checking if galera cluster already configured
+      stat:
+        path: "/etc/galera_cluster_configured"
+      register: "galera_cluster_configured"
+
+    - name: debug | galera_cluster_configured
+      debug:
+        var: "galera_cluster_configured"
+
+    # - name: Ensure MariaDB service is stopped
+    #   service:
+    #     name: mariadb
+    #     state: stopped
+    #   when: not galera_cluster_configured.stat.exists
+
+    - name: bootstrapping first node
+      command: "/usr/bin/galera_new_cluster"
+      become: true
+      delegate_to: "{{ groups['dbs'][0] }}"
+      run_once: true
+      when: >
+        inventory_hostname == groups['dbs'][0] and
+        not galera_cluster_configured.stat.exists
+
+    # - name: ensure node is fully started before continuing
+    #   service:
+    #     name: mariadb
+    #     state: started
+    #   delegate_to: "{{ groups['dbs'][0] }}"
+    #   when: not galera_cluster_configured.stat.exists
+
+    # - name: Bootstrapping Galera Cluster
+    #   command: "/usr/bin/galera_new_cluster"
+    #   when: >
+    #     not galera_cluster_configured.stat.exists and
+    #     inventory_hostname != groups['dbs'][0]
+
+    - name: Ensure MariaDB service is started on all host
+      service:
+        name: mariadb
+        state: started
+
+    - name: Create K3S database
+      mysql_db:
+        name: "{{ db_k3s_database }}"
+        state: present
+        login_user: root
+        login_password: "{{ db_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      when: inventory_hostname == groups['dbs'][0]
+
+    - name: Create K3S user
+      mysql_user:
+        name: "{{ db_k3s_user }}"
+        password: "{{ db_k3s_password }}"
+        priv: "{{ db_k3s_database }}.*:ALL"
+        host: "%"
+        login_user: root
+        login_password: "{{ db_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: present
+      when: inventory_hostname == groups['dbs'][0]
+
+    - name: setup_cluster | cluster bootstrap - marking node as configured for galera cluster
+      file:
+        path: "/etc/galera_cluster_configured"
+        state: "touch"
+        mode: "0644"
+      when: not galera_cluster_configured.stat.exists

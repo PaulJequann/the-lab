@@ -1,0 +1,128 @@
+---
+- hosts: dbs
+  gather_facts: true
+  become: true
+  name: "Install MariaDB"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        cache_valid_time: 3600
+
+    - name: Upgrade packages
+      apt:
+        upgrade: true
+
+    - name: Install packages
+      apt:
+        name:
+          - vim
+          - sudo
+          - zsh
+          - mariadb-server
+          - mariadb-client
+          - mariadb-common
+          - python3-pip
+          - galera4
+        state: present
+
+    - name: Install PyMySQL
+      pip:
+        name: pymysql
+        state: present
+
+    - name: Create an ansible user with sudo privileges
+      user:
+        name: ansible
+        state: present
+        groups: sudo
+        append: true
+        create_home: true
+
+    - name: Copy SSH key for ansible user
+      authorized_key:
+        user: ansible
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+
+    # Grant passwordless sudo access for ansible user
+    - name: Grant passwordless sudo access for ansible user
+      lineinfile:
+        path: /etc/sudoers
+        line: "ansible ALL=(ALL) NOPASSWD:ALL"
+        state: present
+        validate: "/usr/sbin/visudo -cf %s"
+
+    - name: Grant passwordless sudo access for ansible user
+      lineinfile:
+        path: /etc/sudoers
+        line: "pj ALL=(ALL) NOPASSWD:ALL"
+        state: present
+        validate: "/usr/sbin/visudo -cf %s"
+
+    # Disable password login
+    - name: Disable password login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        state: present
+        backup: true
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - regexp: "^#?PasswordAuthentication"
+          line: "PasswordAuthentication yes"
+        - regexp: "^#?PermitRootLogin"
+          line: "PermitRootLogin prohibit-password"
+
+    - name: Ensure MariaDB service is running
+      service:
+        name: mariadb
+        state: started
+        enabled: true
+
+    - name: Is root password set?
+      command: mysql -u root -p{{ db_root_password }} -e "SELECT NOW()"
+      register: is_root_password_set
+      ignore_errors: true
+
+    - name: Update MariaDB root user password
+      mysql_user:
+        name: root
+        password: "{{ db_root_password }}"
+        login_user: root
+        login_password: ""
+        priv: "*.*:ALL,GRANT"
+        host: "localhost"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: present
+      when: is_root_password_set.rc != 0
+
+    - name: Create a database user
+      mysql_user:
+        name: "{{ db_k3s_user }}"
+        password: "{{ db_k3s_password }}"
+        login_user: root
+        login_password: "{{ db_root_password }}"
+        host_all: true
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: present
+
+    - name: Update .cnf file bind address
+      lineinfile:
+        path: /etc/mysql/mariadb.conf.d/50-server.cnf
+        regexp: "^#?bind-address"
+        line: "bind-address            = 0.0.0.0"
+        state: present
+        backup: true
+
+    - name: Write Galera configuration file
+      template:
+        src: "./templates/galera.cnf.j2"
+        dest: /etc/mysql/conf.d/galera.cnf
+        backup: true
+
+  handlers:
+    - name: restart sshd
+      service:
+        name: sshd
+        state: restarted

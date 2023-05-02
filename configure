@@ -371,6 +371,7 @@ generate_ansible_host_secrets() {
     local node_control=
     default_control_node_prefix=${BOOTSTRAP_ANSIBLE_DEFAULT_CONTROL_NODE_HOSTNAME_PREFIX:-k8s-}
     default_worker_node_prefix=${BOOTSTRAP_ANSIBLE_DEFAULT_NODE_HOSTNAME_PREFIX:-k8s-}
+    default_db_node_prefix=${BOOTSTRAP_ANSIBLE_DEFAULT_DB_HOSTNAME_PREFIX:-k8s-}
     for var in "${!BOOTSTRAP_ANSIBLE_HOST_ADDR_@}"; do
         node_id=$(echo "${var}" | awk -F"_" '{print $5}')
         node_control="BOOTSTRAP_ANSIBLE_CONTROL_NODE_${node_id}"
@@ -397,6 +398,30 @@ generate_ansible_host_secrets() {
             printf "kind: Secret\n"
             printf "ansible_user: %s\n" "${!node_username}"
             printf "ansible_become_pass: %s\n" "${!node_password}"
+            printf "db_connection_string: %s\n" "mysql://${BOOTSTRAP_ANSIBLE_DB_K3S_USER}:${BOOTSTRAP_ANSIBLE_DB_K3S_PASSWORD}@tcp(${BOOTSTRAP_ANSIBLE_DB_HOST_ADDR_1})/${BOOTSTRAP_ANSIBLE_DB_K3S_DB_NAME}"
+        } > "${PROJECT_DIR}/ansible/inventory/host_vars/${node_hostname}.sops.yml"
+        sops --encrypt --in-place "${PROJECT_DIR}/ansible/inventory/host_vars/${node_hostname}.sops.yml"
+    done
+    for var in "${!BOOTSTRAP_ANSIBLE_DB_HOST_ADDR_@}"; do
+        node_id=$(echo "${var}" | awk -F"_" '{print $6}')
+            node_hostname="BOOTSTRAP_ANSIBLE_DB_HOSTNAME_${node_id}"
+            host_key="${!node_hostname:-${default_db_node_prefix}}"
+            if [ "${host_key}" == "${default_db_node_prefix}" ]; then
+                node_hostname=${default_db_node_prefix}${node_id}
+            else
+                node_hostname=${!node_hostname}
+            fi
+        {
+            node_username="BOOTSTRAP_ANSIBLE_DB_SSH_USERNAME_${node_id}"
+            node_password="BOOTSTRAP_ANSIBLE_DB_SUDO_PASSWORD_${node_id}"
+            db_root_password="BOOTSTRAP_ANSIBLE_DB_ROOT_PASSWORD_${node_id}"
+            printf "kind: Secret\n"
+            printf "ansible_user: %s\n" "${!node_username}"
+            printf "ansible_become_pass: %s\n" "${!node_password}"
+            printf "db_root_password: %s\n" "${!db_root_password}"
+            printf "db_k3s_database: %s\n" "${BOOTSTRAP_ANSIBLE_DB_K3S_DB_NAME}"
+            printf "db_k3s_user: %s\n" "${BOOTSTRAP_ANSIBLE_DB_K3S_USER}"
+            printf "db_k3s_password: %s\n" "${BOOTSTRAP_ANSIBLE_DB_K3S_PASSWORD}"
         } > "${PROJECT_DIR}/ansible/inventory/host_vars/${node_hostname}.sops.yml"
         sops --encrypt --in-place "${PROJECT_DIR}/ansible/inventory/host_vars/${node_hostname}.sops.yml"
     done
@@ -406,6 +431,7 @@ generate_ansible_hosts() {
     local worker_node_count=
     default_control_node_prefix=${BOOTSTRAP_ANSIBLE_DEFAULT_CONTROL_NODE_HOSTNAME_PREFIX:-k8s-}
     default_worker_node_prefix=${BOOTSTRAP_ANSIBLE_DEFAULT_NODE_HOSTNAME_PREFIX:-k8s-}
+    default_db_node_prefix=${BOOTSTRAP_ANSIBLE_DEFAULT_DB_HOSTNAME_PREFIX:-k8s-}
     {
         printf -- "---\n"
         printf "kubernetes:\n"
@@ -451,6 +477,21 @@ generate_ansible_hosts() {
                 fi
             done
         fi
+            ## Create DBS
+        printf "    dbs:\n"
+        printf "      hosts:\n"
+        for var in "${!BOOTSTRAP_ANSIBLE_DB_HOST_ADDR_@}"; do
+            node_id=$(echo "${var}" | awk -F"_" '{print $6}')
+            node_hostname="BOOTSTRAP_ANSIBLE_DB_HOSTNAME_${node_id}"
+            host_key="${!node_hostname:-${default_db_node_prefix}}"
+            if [ "${host_key}" == "${default_db_node_prefix}" ]; then
+                node_hostname=${default_db_node_prefix}${node_id}
+            else
+                node_hostname=${!node_hostname}
+            fi
+            printf "        %s:\n" "${node_hostname}"
+            printf "          ansible_host: %s\n" "${!var}"
+        done
     } > "${PROJECT_DIR}/ansible/inventory/hosts.yml"
 }
 
