@@ -22,7 +22,7 @@ resource "proxmox_vm_qemu" "cluster_node" {
   network {
     model  = "virtio"
     bridge = "vmbr0"
-    # tag    = data.terraform_remote_state.network.outputs.unifi_networks["lab-"].vlan_id
+    # tag    = data.terraform_remote_state.network.outputs.unifi_networks["lab-internal1"].vlan_id
   }
 
   # cloud-init settings

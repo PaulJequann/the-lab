@@ -1,0 +1,23 @@
+vrrp_instance VI_1 {
+        state {{ keepalived_role | default('BACKUP') }}
+        interface eth0
+        virtual_router_id 51
+        priority {{ '100' if keepalived_role == 'MASTER' else '99' }}
+        advert_int 1
+        unicast_src_ip {{ ansible_default_ipv4.address }}
+        unicast_peer {
+            {% if keepalived_role == 'MASTER' %}
+            {{ hostvars[groups['dbs'][1]].ansible_host }}
+            {% else %}
+            {{ hostvars[groups['dbs'][0]].ansible_host }}
+            {% endif %}
+        }
+        authentication {
+              auth_type PASS
+              auth_pass {{ keepalived_password }}
+        }
+        
+        virtual_ipaddress {
+              10.0.10.99/24
+        }
+}

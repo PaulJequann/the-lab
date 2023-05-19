@@ -13,23 +13,39 @@
       apt:
         upgrade: true
 
-    - name: Install packages
+    - name: Install core packages
       apt:
         name:
           - vim
           - sudo
           - zsh
+          - keepalived
+          # - libipset13
+        state: present
+
+    - name: Install MariaDB packages
+      apt:
+        name:
           - mariadb-server
           - mariadb-client
           - mariadb-common
           - python3-pip
           - galera4
         state: present
+      when: inventory_hostname != groups['dbs'][2]
+
+    - name: Install Galera Arbitrator
+      apt:
+        name:
+          - galera-arbitrator-4
+        state: present
+      when: inventory_hostname == groups['dbs'][2]
 
     - name: Install PyMySQL
       pip:
         name: pymysql
         state: present
+      when: inventory_hostname != groups['dbs'][2]
 
     - name: Create an ansible user with sudo privileges
       user:
@@ -79,11 +95,13 @@
         name: mariadb
         state: started
         enabled: true
+      when: inventory_hostname != groups['dbs'][2]
 
     - name: Is root password set?
       command: mysql -u root -p{{ db_root_password }} -e "SELECT NOW()"
       register: is_root_password_set
       ignore_errors: true
+      when: inventory_hostname != groups['dbs'][2]
 
     - name: Update MariaDB root user password
       mysql_user:
@@ -95,7 +113,9 @@
         host: "localhost"
         login_unix_socket: /var/run/mysqld/mysqld.sock
         state: present
-      when: is_root_password_set.rc != 0
+      when: >
+        inventory_hostname != groups['dbs'][2] and
+        is_root_password_set.rc != 0
 
     - name: Create a database user
       mysql_user:
@@ -103,9 +123,10 @@
         password: "{{ db_k3s_password }}"
         login_user: root
         login_password: "{{ db_root_password }}"
-        host_all: true
+        # host_all: true
         login_unix_socket: /var/run/mysqld/mysqld.sock
         state: present
+      when: inventory_hostname != groups['dbs'][2]
 
     - name: Update .cnf file bind address
       lineinfile:
@@ -114,12 +135,62 @@
         line: "bind-address            = 0.0.0.0"
         state: present
         backup: true
+      when: inventory_hostname != groups['dbs'][2]
 
     - name: Write Galera configuration file
       template:
         src: "./templates/galera.cnf.j2"
         dest: /etc/mysql/conf.d/galera.cnf
         backup: true
+      when: inventory_hostname != groups['dbs'][2]
+
+    - name: GARB - Write Garb configuration file
+      template:
+        src: "./templates/garb.j2"
+        dest: /etc/default/garb
+        backup: true
+      when: inventory_hostname == groups['dbs'][2]
+
+    - name: GARB - Start Garb service and enable auto start
+      service:
+        name: garb
+        state: started
+        enabled: true
+      when: inventory_hostname == groups['dbs'][2]
+
+    - name: GARB - Create garb.service.d directory
+      file:
+        path: /etc/systemd/system/garb.service.d
+        state: directory
+        mode: 0755
+        owner: root
+      when: inventory_hostname == groups['dbs'][2]
+
+    - name: GARB - Configure Garb.d auto restart
+      template:
+        src: "./templates/garb.restart.conf.j2"
+        dest: /etc/systemd/system/garb.service.d/restart.conf
+        backup: true
+      when: inventory_hostname == groups['dbs'][2]
+
+    - name: GARB - Reload systemd
+      systemd:
+        daemon_reload: yes
+      when: inventory_hostname == groups['dbs'][2]
+
+    - name: Update keepalived configuration file
+      template:
+        src: "./templates/keepalived.conf.j2"
+        dest: /etc/keepalived/keepalived.conf
+        backup: true
+      when: inventory_hostname != groups['dbs'][2]
+
+    - name: Start keepalived service and enable auto start
+      service:
+        name: keepalived
+        state: started
+        enabled: true
+      when: inventory_hostname != groups['dbs'][2]
 
   handlers:
     - name: restart sshd

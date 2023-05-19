@@ -2,6 +2,8 @@ all:
   children:
     pve:
       hosts:
+        10.0.10.24:
+          template_id: 1006
         10.0.10.25:
           template_id: 1002
         10.0.10.26:
@@ -13,7 +15,9 @@ all:
         10.0.10.29:
           template_id: 1005
     surface-hosts:
-      hosts: 10.0.10.29
+      hosts:
+        10.0.10.29:
+        10.0.10.24:
     cluster-nodes:
       servers:
         hosts:

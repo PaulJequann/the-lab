@@ -32,7 +32,10 @@ resource "unifi_device" "switch_48_poe" {
     number          = 4
     port_profile_id = unifi_port_profile.lab_hardware.id
   }
-
+  port_override {
+    number          = 5
+    port_profile_id = unifi_port_profile.lab_hardware.id
+  }
 }
 
 # Compute Hardware

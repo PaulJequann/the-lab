@@ -33,3 +33,7 @@ variable "cipassword" {
 variable "template_name" {
   type = string
 }
+
+# variable "vlan_tag" {
+#   type = number
+# }

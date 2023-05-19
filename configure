@@ -398,7 +398,7 @@ generate_ansible_host_secrets() {
             printf "kind: Secret\n"
             printf "ansible_user: %s\n" "${!node_username}"
             printf "ansible_become_pass: %s\n" "${!node_password}"
-            printf "db_connection_string: %s\n" "mysql://${BOOTSTRAP_ANSIBLE_DB_K3S_USER}:${BOOTSTRAP_ANSIBLE_DB_K3S_PASSWORD}@tcp(${BOOTSTRAP_ANSIBLE_DB_HOST_ADDR_1})/${BOOTSTRAP_ANSIBLE_DB_K3S_DB_NAME}"
+            printf "db_connection_string: %s\n" "mysql://${BOOTSTRAP_ANSIBLE_DB_K3S_USER}:${BOOTSTRAP_ANSIBLE_DB_K3S_PASSWORD}@tcp(${BOOTSTRAP_ANSIBLE_DB_KEEPALIVED_VIP})/${BOOTSTRAP_ANSIBLE_DB_K3S_DB_NAME}"
         } > "${PROJECT_DIR}/ansible/inventory/host_vars/${node_hostname}.sops.yml"
         sops --encrypt --in-place "${PROJECT_DIR}/ansible/inventory/host_vars/${node_hostname}.sops.yml"
     done
@@ -422,6 +422,12 @@ generate_ansible_host_secrets() {
             printf "db_k3s_database: %s\n" "${BOOTSTRAP_ANSIBLE_DB_K3S_DB_NAME}"
             printf "db_k3s_user: %s\n" "${BOOTSTRAP_ANSIBLE_DB_K3S_USER}"
             printf "db_k3s_password: %s\n" "${BOOTSTRAP_ANSIBLE_DB_K3S_PASSWORD}"
+            if [ "${node_id}" == "1" ]; then
+                printf "keepalived_role: %s\n" "MASTER"
+            else
+                printf "keepalived_role: %s\n" "BACKUP"
+            fi
+            printf "keepalived_password: %s\n" "${BOOTSTRAP_ANSIBLE_DB_KEEPALIVED_PASSWORD}"
         } > "${PROJECT_DIR}/ansible/inventory/host_vars/${node_hostname}.sops.yml"
         sops --encrypt --in-place "${PROJECT_DIR}/ansible/inventory/host_vars/${node_hostname}.sops.yml"
     done

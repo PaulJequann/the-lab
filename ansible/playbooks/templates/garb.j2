@@ -1,0 +1,2 @@
+GALERA_NODES="{{ groups['dbs'] | map('extract', hostvars) | map(attribute='ansible_host') | join(',') }}"
+GALERA_GROUP="wendy_cluster"
