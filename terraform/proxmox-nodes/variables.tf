@@ -47,3 +47,18 @@ variable "server_nodes" {
     target_node = string
   }))
 }
+
+variable "unifi_username" {
+  description = "username for the unifi controller"
+  type        = string
+}
+
+variable "unifi_password" {
+  description = "password for the unifi controller"
+  type        = string
+}
+
+variable "unifi_api_url" {
+  description = "url for the unifi controller"
+  type        = string
+}
