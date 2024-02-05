@@ -1,8 +1,10 @@
 ---
-- hosts: pve
+- hosts: surface-hosts
   gather_facts: true
   name: "configure proxmox host"
+  become: true
   vars:
+    ansible_user: root
     created_username: pj
 
   tasks:

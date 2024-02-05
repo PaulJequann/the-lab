@@ -3,7 +3,7 @@ terraform {
     organization = "pauljequann"
 
     workspaces {
-      name = "homelab-proxmox"
+      name = "homelab-dev-server"
     }
   }
   required_providers {

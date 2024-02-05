@@ -2,6 +2,8 @@ all:
   children:
     pve:
       hosts:
+        10.0.10.24:
+          template_id: 1006
         10.0.10.25:
           template_id: 1002
         10.0.10.26:
@@ -13,7 +15,11 @@ all:
         10.0.10.29:
           template_id: 1005
     surface-hosts:
-      hosts: 10.0.10.29
+      hosts:
+        10.0.10.24:
+        10.0.10.29:
+      vars:
+        ansible_user: root
     servers:
       hosts:
         10.0.10.30:
@@ -34,7 +40,7 @@ all:
         10.0.10.42:
   vars:
     ansible_connection: ssh
-    ansible_user: ansible
+    ansible_user: root
     ansible_ssh_private_key_file: ~/.ssh/id_ed25519
     ansible_python_interpreter: /usr/bin/python3
     host_key_checking: False

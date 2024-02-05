@@ -2,7 +2,7 @@
 - name: Bootstrap playbook
   # Don't gather facts automatically because that will trigger
   # a connection, which needs to check the remote host key
-  hosts: pve
+  hosts: surface-hosts
   gather_facts: false
 
   tasks:
@@ -17,5 +17,5 @@
         ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
     # Now that we have resolved the issue with the host key
     # we can "gather facts" without issue
-    - name: Delayed gathering of facts
-      setup:
+    # - name: Delayed gathering of facts
+    #   setup:

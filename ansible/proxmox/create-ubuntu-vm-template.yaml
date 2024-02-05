@@ -1,5 +1,5 @@
 ---
-- hosts: pve
+- hosts: surface-hosts
   gather_facts: false
   name: "create VM template"
   vars:
