@@ -223,7 +223,7 @@ verify_binaries() {
     _has_binary "flux"
     _has_binary "git"
     # _has_binary "gitops"
-    _has_binary "ipcalc"
+    # _has_binary "ipcalc"
     _has_binary "jq"
     _has_binary "pip3"
     _has_binary "sops"
