@@ -20,33 +20,62 @@ includes:
 
 tasks:
   init:
-    desc: Initialize workstation dependencies with Brew
+    desc: Initialize workstation dependencies
     cmds:
-      - brew install {{.DEPS}} {{.CLI_ARGS}}
-    preconditions:
-      - sh: command -v brew
-        msg: |
-          Homebrew is not installed. Using MacOS, Linux or WSL?
-          Head over to https://brew.sh to get up and running.
+      - task: detect_os
+      - task: install_deps
+
+  detect_os:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        if command -v pacman &> /dev/null; then
+          echo "export PKG_MANAGER=pacman" >> .pkg_manager
+        elif command -v brew &> /dev/null; then
+          echo "export PKG_MANAGER=brew" >> .pkg_manager
+        else
+          echo "No supported package manager found. Please install dependencies manually."
+          exit 1
+        fi
+
+  install_deps:
+    internal: true
+    deps: [detect_os]
+    cmds:
+      - |
+        source .pkg_manager
+        if [ "$PKG_MANAGER" = "pacman" ]; then
+          sudo pacman -Syu --needed {{.DEPS}} {{.CLI_ARGS}}
+        elif [ "$PKG_MANAGER" = "brew" ]; then
+          brew install {{.DEPS}} {{.CLI_ARGS}}
+        fi
     vars:
+      # macOS dependencies
+      # fluxcd/tap/flux
+      # go-task/tap/go-task
+      # kubernetes-cli
+      # weaveworks/tap/gitops
+      # add weavework gitops later
       DEPS: >-
         age
         ansible
         direnv
-        fluxcd/tap/flux
-        go-task/tap/go-task
+        docker
+        fluxcd
+        go-task
         helm
         ipcalc
         jq
-        kubernetes-cli
+        kubectl
         kustomize
         pre-commit
         prettier
+        python-pip
         sops
         stern
         terraform
         tflint
-        weaveworks/tap/gitops
         yamllint
         yq
 

@@ -18,3 +18,4 @@ terraform.tfstate*
 *.tfvars
 .terraform.lock
 .terraform.lock.hcl
+.pkg_manager
