@@ -1,0 +1,174 @@
+---
+- host: 10.0.10.101
+  gather_facts: true
+  name: "configure pihole"
+  remote_user: root
+  become: true
+
+---
+- name: Install and Configure Pi-hole
+  hosts: pihole
+  become: true
+  vars:
+    pihole_password: "changeme123" # Change this to your desired admin password
+    pihole_interface: "eth0" # Change this to match your network interface
+    pihole_dns_1: "1.1.1.1" # Primary upstream DNS
+    pihole_dns_2: "1.0.0.1" # Secondary upstream DNS
+    timezone: "UTC" # Change this to your timezone
+
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - wget
+          - git
+          - systemd-sysv
+        state: present
+
+    - name: Set timezone
+      timezone:
+        name: "{{ timezone }}"
+
+    - name: Create temporary directory for Pi-hole
+      file:
+        path: /tmp/pihole
+        state: directory
+        mode: "0755"
+
+    - name: Download Pi-hole installation script
+      get_url:
+        url: https://install.pi-hole.net
+        dest: /tmp/pihole/install.sh
+        mode: "0755"
+
+    - name: Create Pi-hole setup vars file
+      copy:
+        dest: /etc/pihole/setupVars.conf
+        content: |
+          PIHOLE_INTERFACE={{ pihole_interface }}
+          IPV4_ADDRESS=10.0.10.101
+          IPV6_ADDRESS=
+          PIHOLE_DNS_1={{ pihole_dns_1}}
+          PIHOLE_DNS_2={{ pihole_dns_2}}
+          QUERY_LOGGING=true
+          INSTALL_WEB_SERVER=true
+          INSTALL_WEB_INTERFACE=true
+          LIGHTTPD_ENABLED=true
+          CACHE_SIZE=10000
+          DNS_FQDN_REQUIRED=true
+          DNS_BOGUS_PRIV=true
+          DNSMASQ_LISTENING=local
+          WEBPASSWORD={{ pihole_password | password_hash('sha512') }}
+        mode: "0644"
+        create: yes
+      notify: Restart Pi-hole
+
+    - name: Run Pi-hole installation script unattended
+      shell: >
+        PIHOLE_SKIP_OS_CHECK=true 
+        /tmp/pihole/install.sh --unattended
+      args:
+        creates: /usr/local/bin/pihole
+
+    - name: Enable and start Pi-hole services
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+        state: started
+      loop:
+        - pihole-FTL
+        - lighttpd
+
+    - name: Clean up installation files
+      file:
+        path: /tmp/pihole
+        state: absent
+
+  handlers:
+    - name: Restart Pi-hole
+      command: pihole restartdns
+
+  post_tasks:
+    - name: Display Pi-hole admin password
+      debug:
+        msg: "Pi-hole admin password is: {{ pihole_password }}"
+
+    - name: Display installation completion message
+      debug:
+        msg: |
+          Pi-hole has been installed successfully!
+          Access the admin interface at http://<your-server-ip>/admin
+          Login with the password shown above
+
+  # tasks:
+  #   - name: Update apt cache
+  #     apt:
+  #       cache_valid_time: 3600
+
+  #   - name: Upgrade packages
+  #     apt:
+  #       upgrade: true
+
+  #   - name: Install packages
+  #     apt:
+  #       name:
+  #         - vim
+  #         - sudo
+  #         - zsh
+  #       state: present
+
+  #   - name: Create an ansible user with sudo privileges
+  #     user:
+  #       name: ansible
+  #       state: present
+  #       groups: sudo
+  #       append: true
+  #       create_home: true
+
+  #   - name: Copy SSH key for ansible user
+  #     authorized_key:
+  #       user: ansible
+  #       state: present
+  #       key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+
+  #   # Grant passwordless sudo access for ansible user
+  #   - name: Grant passwordless sudo access for ansible user
+  #     lineinfile:
+  #       path: /etc/sudoers
+  #       line: "ansible ALL=(ALL) NOPASSWD:ALL"
+  #       state: present
+  #       validate: "/usr/sbin/visudo -cf %s"
+
+  #   # Disable password login
+  #   - name: Disable password login
+  #     lineinfile:
+  #       path: /etc/ssh/sshd_config
+  #       state: present
+  #       backup: true
+  #       regexp: "{{ item.regexp }}"
+  #       line: "{{ item.line }}"
+  #     loop:
+  #       - regexp: "^#?PasswordAuthentication"
+  #         line: "PasswordAuthentication yes"
+  #       - regexp: "^#?PermitRootLogin"
+  #         line: "PermitRootLogin prohibit-password"
+
+  #   - name: Create pihole directory
+  #     file:
+  #       path: "/home/{{ ansible_user }}/pihole"
+  #       owner: "{{ ansible_user }}"
+  #       group: "{{ ansible_user }}"
+  #       state: directory
+  #       mode: 0755
+
+  # handlers:
+  #   - name: restart sshd
+  #     service:
+  #       name: sshd
+  #       state: restarted

@@ -65,7 +65,6 @@ tasks:
         fluxcd
         go-task
         helm
-        ipcalc
         jq
         kubectl
         kustomize

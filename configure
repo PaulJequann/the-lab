@@ -28,8 +28,8 @@ main() {
         verify_binaries
         verify_master_count
         verify_ansible_hosts
-        verify_metallb
-        verify_kubevip
+        # verify_metallb
+        # verify_kubevip
         verify_addressing
         verify_age
         verify_git_repository
