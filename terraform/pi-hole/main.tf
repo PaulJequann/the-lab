@@ -11,6 +11,7 @@ resource "proxmox_lxc" "pihole" {
   memory          = 512
   swap            = 0
   onboot          = true
+  start = true
   ostemplate      = var.template_name
   ssh_public_keys = file("${var.ssh_key_file}")
   password        = var.cipassword
@@ -27,15 +28,16 @@ resource "proxmox_lxc" "pihole" {
     ip     = var.pi-hole-ip
   }
 
-  nameserver = "1.1.1.1"
+  nameserver = "10.0.10.101"
 
 }
 
 resource "unifi_user" "pihole" {
+  allow_existing = true
   name       = "pihole"
   mac        = proxmox_lxc.pihole.network[0].hwaddr
   fixed_ip   = "10.0.10.101"
   network_id = "6445cb96b3a9fe1157bda058"
   # network_id             = data.terraform_remote_state.unifi.outputs.unifi_networks["lab-internal"].id
-  skip_forget_on_destroy = false
+  skip_forget_on_destroy = true
 }

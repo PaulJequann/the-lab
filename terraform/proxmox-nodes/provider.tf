@@ -9,7 +9,7 @@ terraform {
   required_providers {
     proxmox = {
       source  = "telmate/proxmox"
-      version = "3.0.1-rc1"
+      version = "2.9.0"
     }
     unifi = {
       source  = "paultyng/unifi"

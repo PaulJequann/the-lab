@@ -1,0 +1,72 @@
+---
+- hosts: pihole
+  gather_facts: true
+  name: "Configure Pi-hole"
+  become: true
+  become_user: root
+
+  vars:
+    pihole_password: "changeme123" # Change this to your desired admin password
+    pihole_interface: "eth0" # Change this to match your network interface
+    pihole_dns_1: "1.1.1.1" # Primary upstream DNS
+    pihole_dns_2: "1.0.0.1" # Secondary upstream DNS
+    timezone: "UTC" # Change this to your timezone
+    ansible_user: root
+    created_ansible_user: ansible
+
+  tasks:
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - wget
+          - git
+          - systemd-sysv
+          - vim
+          - sudo
+        state: present
+        
+    - name: Create an ansible user with sudo privileges
+      ansible.builtin.user:
+        name: "{{ created_ansible_user }}"
+        state: present
+        groups: sudo
+        append: true
+        create_home: true
+
+    - name: Copy SSH key for ansible user
+      ansible.builtin.authorized_key:
+        user: "{{ created_ansible_user }}"
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+
+    - name: Grant passwordless sudo access for ansible user
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        line: "{{ created_ansible_user }} ALL=(ALL) NOPASSWD:ALL"
+        state: present
+        validate: "/usr/sbin/visudo -cf %s"
+
+    - name: Disable password login
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        state: present
+        backup: true
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - regexp: "^#?PasswordAuthentication"
+          line: "PasswordAuthentication yes"
+        - regexp: "^#?PermitRootLogin"
+          line: "PermitRootLogin prohibit-password"
+
+  handlers:
+    - name: restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted

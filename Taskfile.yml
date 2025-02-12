@@ -63,7 +63,7 @@ tasks:
         direnv
         docker
         fluxcd
-        go-task
+        task
         helm
         jq
         kubectl

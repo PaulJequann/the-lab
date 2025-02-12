@@ -1,0 +1,151 @@
+---
+- name: Install and Configure Pi-hole
+  hosts: pihole
+  become: true
+  gather_facts: true
+
+  vars:
+    pihole_interface: "eth0"
+    pihole_dns_1: "1.1.1.1"
+    pihole_dns_2: "1.0.0.1"
+    timezone: "UTC"
+    dns_records:
+      - { ip: "10.0.10.164", domain: "hoodflixv2.local.bysliek.com" }
+      # Add more DNS records here
+    cname_records:
+      - { alias: "monitor.local.bysliek.com", original: "hoodflixv2.local.bysliek.com" }
+      # Add more CNAME records here
+
+  pre_tasks:
+    - name: Check if Pi-hole is installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/pihole
+      register: pihole_check
+
+    - name: Check Pi-hole version if installed
+      ansible.builtin.command: pihole -v
+      register: pihole_version
+      changed_when: false
+      failed_when: false
+      when: pihole_check.stat.exists
+
+  tasks:
+    - name: Set timezone
+      community.general.timezone:
+        name: "{{ timezone }}"
+
+    - name: Install Pi-hole tasks
+      when: not pihole_check.stat.exists
+      block:
+        - name: Create temporary directory for Pi-hole
+          ansible.builtin.file:
+            path: /tmp/pihole
+            state: directory
+            mode: "0755"
+
+        - name: Download Pi-hole installation script
+          ansible.builtin.get_url:
+            url: https://install.pi-hole.net
+            dest: /tmp/pihole/install.sh
+            mode: "0755"
+
+        - name: Create Pi-hole directory
+          ansible.builtin.file:
+            path: /etc/pihole
+            state: directory
+            mode: "0755"
+
+        - name: Create Pi-hole setup vars file
+          ansible.builtin.copy:
+            dest: /etc/pihole/setupVars.conf
+            content: |
+              PIHOLE_INTERFACE={{ pihole_interface }}
+              IPV4_ADDRESS={{ ansible_host }}
+              IPV6_ADDRESS=
+              PIHOLE_DNS_1={{ pihole_dns_1 }}
+              PIHOLE_DNS_2={{ pihole_dns_2 }}
+              QUERY_LOGGING=true
+              INSTALL_WEB_SERVER=true
+              INSTALL_WEB_INTERFACE=true
+              LIGHTTPD_ENABLED=true
+              CACHE_SIZE=10000
+              DNS_FQDN_REQUIRED=true
+              DNS_BOGUS_PRIV=true
+              DNSMASQ_LISTENING=local
+              WEBPASSWORD={{ pihole_password | password_hash('sha512') }}
+            mode: "0644"
+          # notify: restart pihole
+        
+        - name: Run Pi-hole installation script unattended
+          ansible.builtin.shell: |
+            PIHOLE_SKIP_OS_CHECK=true /tmp/pihole/install.sh --unattended
+          args:
+            creates: /usr/local/bin/pihole
+
+    - name: Configure DNS records
+      block:
+        - name: Ensure custom DNS config directory exists
+          ansible.builtin.file:
+            path: /etc/dnsmasq.d
+            state: directory
+            mode: '0755'
+
+        - name: Add custom DNS entries to Pi-hole
+          ansible.builtin.lineinfile:
+            path: /etc/pihole/custom.list
+            line: "{{ item.ip }} {{ item.domain }}"
+            create: yes
+            mode: '0644'
+          loop: "{{ dns_records }}"
+          notify: Restart Pi-hole services
+
+        - name: Add CNAME records to Pi-hole
+          ansible.builtin.lineinfile:
+            path: /etc/dnsmasq.d/05-pihole-custom-cname.conf
+            line: "cname={{ item.alias }},{{ item.original }}"
+            create: yes
+            mode: '0644'
+          loop: "{{ cname_records }}"
+          notify: Restart Pi-hole services
+
+    - name: Enable and start Pi-hole services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: yes
+        state: started
+      loop:
+        - pihole-FTL
+        - lighttpd
+
+    - name: Clean up installation files
+      ansible.builtin.file:
+        path: /tmp/pihole
+        state: absent
+      when: not pihole_check.stat.exists
+
+  handlers:
+    - name: restart pihole
+      ansible.builtin.systemd:
+        name: pihole-FTL
+        state: restarted
+
+    - name: Restart Pi-hole services
+      ansible.builtin.systemd:
+        name: pihole-FTL
+        state: restarted
+
+    - name: Reload DNS configuration
+      ansible.builtin.command: pihole restartdns
+      changed_when: true
+
+  post_tasks:
+    - name: Display Pi-hole admin password
+      debug:
+        msg: "Pi-hole admin password is: {{ pihole_password }}"
+
+    - name: Display installation completion message
+      debug:
+        msg: |
+          Pi-hole has been installed successfully!
+          Access the admin interface at http://{{ ansible_host }}/admin
+          Login with the password shown above

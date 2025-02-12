@@ -20,7 +20,16 @@
     "ghcr.io/devcontainers-extra/features/pre-commit:2": {},
     "ghcr.io/devcontainers-extra/features/sops:1": {},
     "ghcr.io/devcontainers-extra/features/yamllint:2": {}
-  }
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.config/sops/age/keys.txt,target=/home/vscode/.config/sops/age/keys.txt,type=bind,consistency=cached,readonly",
+    "source=${localEnv:HOME}/.ssh/id_ed25519.pub,target=/home/vscode/.ssh/id_ed25519.pub,type=bind,consistency=cached,readonly",
+    "source=${localEnv:HOME}/.terraform.d/credentials.tfrc.json,target=/home/vscode/.terraform.d/credentials.tfrc.json,type=bind,consistency=cached,readonly"
+  ],
+
+  "remoteEnv": {
+    "SOPS_AGE_KEY_FILE": "/home/vscode/.config/sops/age/keys.txt"
+  },
 
   // Features to add to the dev container. More info: https://containers.dev/features.
   // "features": {},
@@ -29,8 +38,8 @@
   // "forwardPorts": [],
 
   // Use 'postCreateCommand' to run commands after the container is created.
-  // "postCreateCommand": "uname -a",
-
+  "postCreateCommand": "mkdir -p ~/.config/sops/age && sudo chown -R $USER:$USER /usr/local/py-utils/venvs/ansible-core && pipx inject ansible-core passlib"
+  // "postCreateCommand": "mkdir -p ~/.config/sops/age && chmod 600 ~/.config/sops/age/keys.txt && chown -R $USER:$USER /usr/local/py-utils/venvs/ansible-core && pipx inject ansible-core passlib"
   // Configure tool-specific properties.
   // "customizations": {},
 

@@ -19,3 +19,9 @@ tasks:
     dir: "{{.TERRAFORM_DIR}}/cloudflare"
     cmds:
       - terraform apply {{.CLI_ARGS}}
+
+  create-pihole:
+    desc: Create Terraform resources
+    dir: "{{.TERRAFORM_DIR}}/pi-hole"
+    cmds:
+      - terraform apply --auto-approve

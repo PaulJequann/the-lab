@@ -8,6 +8,8 @@ resource "unifi_network" "networks" {
   dhcp_start    = each.value.dhcp_start
   dhcp_stop     = each.value.dhcp_stop
   dhcp_enabled  = each.value.dhcp_enabled
+  dhcp_dns      = try(each.value.dhcp_dns, null)
+  domain_name   = try(each.value.domain_name, null)
   multicast_dns = each.value.multicast_dns
   #  internet_access_enabled      = each.value.internet_access_enabled
   #  intra_network_access_enabled = each.value.intra_network_access_enabled

@@ -23,10 +23,13 @@ variable "networks" {
     dhcp_start                   = string
     dhcp_stop                    = string
     dhcp_enabled                 = bool
+    dhcp_dns                     = optional(list(string))
     multicast_dns                = bool
+    domain_name                  = optional(string)
     internet_access_enabled      = bool
     intra_network_access_enabled = bool
   }))
+
   description = "List of networks to create"
 }
 
