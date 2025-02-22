@@ -1,0 +1,39 @@
+---
+
+#
+# (REQUIRED) Cluster details - Cluster represents the Kubernetes cluster layer and any additional customizations
+#
+
+# (REQUIRED) The network (in CIDR notation) your nodes are on (e.g. 192.168.1.0/24)
+node_network: "10.0.10.0/24"
+
+unifi_network_id: "6445cb96b3a9fe1157bda058"
+
+# (REQUIRED) Use only 1, 3 or more ODD number of controller nodes, recommended is 3. Worker nodes are optional.
+node_inventory:
+  - name: "cedes"            
+    address: "10.0.10.26"   
+    controller: true
+    mac_addr: "00:23:24:a2:50:d4"
+  - name: "eyana"            
+    address: "10.0.10.28"   
+    controller: true
+    mac_addr: "00:23:24:99:84:ac"
+  - name: "jayden"            
+    address: "10.0.10.25"   
+    controller: true
+    mac_addr: "00:23:24:a2:45:33"
+  - name: "gpop"            
+    address: "10.0.10.29"   
+    controller: false
+    mac_addr: "00:50:b6:1f:c7:3d"
+  - name: "jamahl"            
+    address: "10.0.10.24"   
+    controller: false
+    mac_addr: "a0:ce:c8:8b:63:07"
+  
+
+# (REQUIRED) The DNS servers to use for the cluster nodes. (DEFAULT: Cloudflare DNS)
+dns_servers:
+  - "1.1.1.1"
+  - "1.0.0.1"

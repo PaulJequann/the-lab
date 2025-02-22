@@ -1,0 +1,9 @@
+{% for node in node_inventory %}
+resource "unifi_user" "{{ node.name }}" {
+  name       = "{{ node.name }}"
+  mac        = "{{ node.mac_addr }}"
+  fixed_ip   = "{{ node.address }}"
+  network_id = "{{ unifi_network_id }}"
+  skip_forget_on_destroy = false
+}
+{% endfor %}

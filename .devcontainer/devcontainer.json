@@ -9,9 +9,9 @@
     "ghcr.io/devcontainers/features/terraform:1": {},
     "ghcr.io/dhoeric/features/stern:1": {},
     "ghcr.io/rio/features/kustomize:1": {},
-    "ghcr.io/jsburckhardt/devcontainer-features/flux:1": {},
+    // "ghcr.io/jsburckhardt/devcontainer-features/flux:1": {},
     "ghcr.io/devcontainers-community/npm-features/prettier:1": {},
-    "ghcr.io/nucleuscloud/devcontainer-features/helmfile:0": {},
+    // "ghcr.io/nucleuscloud/devcontainer-features/helmfile:0": {},
     "ghcr.io/larsnieuwenhuizen/features/jqyq:0": {},
     "ghcr.io/devcontainers-extra/features/age:1": {},
     "ghcr.io/devcontainers-extra/features/ansible:2": {},
@@ -38,7 +38,7 @@
   // "forwardPorts": [],
 
   // Use 'postCreateCommand' to run commands after the container is created.
-  "postCreateCommand": "mkdir -p ~/.config/sops/age && sudo chown -R $USER:$USER /usr/local/py-utils/venvs/ansible-core && pipx inject ansible-core passlib"
+  "postCreateCommand": "mkdir -p ~/.config/sops/age && sudo chown -R $USER:$USER /usr/local/py-utils/venvs/ansible-core && pipx inject ansible-core passlib && pipx install makejinja && pipx inject makejinja attrs"
   // "postCreateCommand": "mkdir -p ~/.config/sops/age && chmod 600 ~/.config/sops/age/keys.txt && chown -R $USER:$USER /usr/local/py-utils/venvs/ansible-core && pipx inject ansible-core passlib"
   // Configure tool-specific properties.
   // "customizations": {},
