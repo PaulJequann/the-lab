@@ -37,3 +37,10 @@ node_inventory:
 dns_servers:
   - "1.1.1.1"
   - "1.0.0.1"
+
+# PXE server configuration
+pxe_server:
+  iso_url: "https://download.rockylinux.org/pub/rocky/9/isos/x86_64/Rocky-9.5-x86_64-dvd.iso"
+  iso_checksum: "sha256:ba60c3653640b5747610ddfb4d09520529bef2d1d83c1feb86b0c84dff31e04e"
+  timezone: "America/New_York"
+  dhcp_proxy: true

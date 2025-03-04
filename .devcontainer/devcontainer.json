@@ -3,7 +3,7 @@
 {
   "name": "Ubuntu",
   // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  "image": "mcr.microsoft.com/devcontainers/python",
   "features": {
     "ghcr.io/devcontainers/features/python:1": {},
     "ghcr.io/devcontainers/features/terraform:1": {},
@@ -38,7 +38,7 @@
   // "forwardPorts": [],
 
   // Use 'postCreateCommand' to run commands after the container is created.
-  "postCreateCommand": "mkdir -p ~/.config/sops/age && sudo chown -R $USER:$USER /usr/local/py-utils/venvs/ansible-core && pipx inject ansible-core passlib && pipx install makejinja"
+  "postCreateCommand": "mkdir -p ~/.config/sops/age && sudo chown -R $USER:$USER /usr/local/py-utils/venvs/ansible-core && pipx inject ansible-core passlib && pipx install makejinja && pipx inject makejinja attrs"
   // "postCreateCommand": "mkdir -p ~/.config/sops/age && chmod 600 ~/.config/sops/age/keys.txt && chown -R $USER:$USER /usr/local/py-utils/venvs/ansible-core && pipx inject ansible-core passlib"
   // Configure tool-specific properties.
   // "customizations": {},
