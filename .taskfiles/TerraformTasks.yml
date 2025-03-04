@@ -25,3 +25,21 @@ tasks:
     dir: "{{.TERRAFORM_DIR}}/pi-hole"
     cmds:
       - terraform apply --auto-approve
+  
+  init-nodes:
+    desc: Initialize terraform dependencies
+    dir: "{{.TERRAFORM_DIR}}/kubernetes-nodes"
+    cmds:
+      - terraform init {{.CLI_ARGS}}
+  
+  plan-nodes:
+    desc: Show the changes terraform will make
+    dir: "{{.TERRAFORM_DIR}}/kubernetes-nodes"
+    cmds:
+      - terraform plan {{.CLI_ARGS}}
+
+  apply-nodes:
+    desc: Apply the changes to Kubernetes nodes
+    dir: "{{.TERRAFORM_DIR}}/kubernetes-nodes"
+    cmds:
+      - terraform apply {{.CLI_ARGS}}
