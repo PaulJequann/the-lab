@@ -1,3 +1,4 @@
 [makejinja]
 data = ["./config.yaml"]
 jinja_suffix = ".j2"
+force = true

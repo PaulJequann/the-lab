@@ -83,7 +83,13 @@ tasks:
     cmds:
       - ./configure --verify
 
+  # configure:
+  #   desc: Configure repository from env settings
+  #   cmds:
+  #     - ./configure
+
   configure:
     desc: Configure repository from env settings
     cmds:
-      - ./configure
+      - makejinja --input ./templates/ansible/ --output {{.ANSIBLE_DIR}}/inventory/
+      - makejinja --input ./templates/terraform/kubernetes-nodes/ --output {{.TERRAFORM_DIR}}/

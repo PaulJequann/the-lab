@@ -1,0 +1,18 @@
+---
+all:
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_user: "pj"
+  children:
+    controller:
+      hosts:
+        {% for node in node_inventory if node.controller %}
+        {{ node.name }}:
+          ansible_host: {{ node.address }}
+        {% endfor %}
+    worker:
+      hosts:
+        {% for node in node_inventory if not node.controller %}
+        {{ node.name }}:
+          ansible_host: {{ node.address }}
+        {% endfor %}
