@@ -5,6 +5,8 @@ k3s_token_file: /etc/rancher/node/password
 k3s_service_file: /etc/systemd/system/k3s.service
 k3s_data_dir: /var/lib/rancher/k3s
 k3s_kubeconfig_file: /etc/rancher/k3s/k3s.yaml
+control_plane_endpoint: "{{ control_plane_endpoint }}"
+kube_vip_version: "{{ kube_vip_version }}"
 k3s_server_config:
   tls-san:
     - "{{ control_plane_endpoint }}"

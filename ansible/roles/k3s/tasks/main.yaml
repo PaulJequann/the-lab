@@ -1,3 +1,4 @@
+---
 - name: Check if cluster is installed
   check_mode: false
   ansible.builtin.stat:
@@ -71,8 +72,19 @@
     - src: k3s.service.j2
       dest: "{{ k3s_service_file }}"
 
+- name: Download kube-vip rbac manifest
+  run_once: true
+  ansible.builtin.get_url:
+    url: https://kube-vip.io/manifests/rbac.yaml
+    dest: "{{ k3s_data_dir }}/server/manifests/kube-vip-rbac.yaml"
+    mode: 0644
+    owner: root
+    group: root
+  when: "'controllers' in group_names"
+
 - name: Copy kube-vip manifests
-  when: "'masters' in group_names"
+  run_once: true
+  when: "'controllers' in group_names"
   ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
