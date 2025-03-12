@@ -91,5 +91,5 @@ tasks:
   configure:
     desc: Configure repository from env settings
     cmds:
-      - makejinja --input ./templates/ansible/ --output {{.ANSIBLE_DIR}}/inventory/
-      - makejinja --input ./templates/terraform/kubernetes-nodes/ --output {{.TERRAFORM_DIR}}/
+      - makejinja --input ./templates/ansible/ --output {{.ANSIBLE_DIR}}
+      - makejinja --input ./templates/terraform/ --output {{.TERRAFORM_DIR}}/

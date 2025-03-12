@@ -10,6 +10,7 @@ node_network: "10.0.10.0/24"
 unifi_network_id: "6445cb96b3a9fe1157bda058"
 
 ansible_user: "pj"
+k3s_version: v1.30.4+k3s1
 
 # (REQUIRED) Use only 1, 3 or more ODD number of controller nodes, recommended is 3. Worker nodes are optional.
 node_inventory:

@@ -1,10 +1,7 @@
 ---
 all:
-  vars:
-    ansible_python_interpreter: /usr/bin/python3
-    ansible_user: "pj"
   children:
-    controller:
+    controllers:
       hosts:
         {% for node in node_inventory if node.controller %}
         {{ node.name }}:
