@@ -9,7 +9,7 @@ node_network: "10.0.10.0/24"
 
 unifi_network_id: "6445cb96b3a9fe1157bda058"
 
-ansible_user: "pj"
+ansible_user: "ansible"
 k3s_version: v1.30.4+k3s1
 
 kube_vip_version: "v0.8.9"

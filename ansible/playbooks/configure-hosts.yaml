@@ -1,0 +1,196 @@
+---
+- name: Bootstrap playbook
+  # Don't gather facts initially because that would trigger a connection before SSH key handling
+  hosts: all
+  gather_facts: false
+
+  pre_tasks:
+    - name: Check known_hosts for {{ inventory_hostname }}
+      local_action: shell ssh-keygen -F {{ inventory_hostname }}
+      register: has_entry_in_known_hosts_file
+      changed_when: false
+      ignore_errors: true
+      
+    - name: Set SSH arguments to ignore host key checking on first connection
+      when: has_entry_in_known_hosts_file.rc == 1
+      set_fact:
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+
+    # Now that we've handled SSH key checking, gather facts
+    - name: Gather facts
+      setup:
+      
+    - name: Set sudo group based on OS
+      set_fact:
+        sudo_group: "{{ 'wheel' if ansible_facts['os_family'] == 'RedHat' else 'sudo' }}"
+      
+  tasks:
+    - name: Create an ansible user with sudo privileges
+      user:
+        name: ansible
+        state: present
+        groups: "{{ sudo_group }}"
+        append: true
+        create_home: true
+        shell: /bin/bash
+      become: true
+      
+    - name: Create .ssh directory for ansible user
+      file:
+        path: /home/ansible/.ssh
+        state: directory
+        owner: ansible
+        group: ansible
+        mode: '0700'
+      become: true
+
+    - name: Copy SSH key for ansible user
+      authorized_key:
+        user: ansible
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+      become: true
+
+    # Grant passwordless sudo access for ansible user
+    - name: Grant passwordless sudo access for ansible user
+      lineinfile:
+        path: /etc/sudoers.d/ansible
+        line: "ansible ALL=(ALL) NOPASSWD:ALL"
+        state: present
+        create: yes
+        validate: "/usr/sbin/visudo -cf %s"
+        mode: '0440'
+      become: true
+
+    # - name: Create a new regular user with sudo privileges
+    #   user:
+    #     name: "{{ created_username }}"
+    #     state: present
+    #     groups: sudo
+    #     append: true
+    #     create_home: true
+    #     shell: /bin/bash
+    #   become: true
+    #   when: created_username is defined
+
+    # - name: Create .ssh directory for regular user
+    #   file:
+    #     path: "/home/{{ created_username }}/.ssh"
+    #     state: directory
+    #     owner: "{{ created_username }}"
+    #     group: "{{ created_username }}"
+    #     mode: '0700'
+    #   become: true
+    #   when: created_username is defined
+
+    # - name: Set authorized key for regular user
+    #   authorized_key:
+    #     user: "{{ created_username }}"
+    #     state: present
+    #     key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+    #   become: true
+    #   when: created_username is defined
+
+    # Harden SSH configuration
+    - name: Configure SSH hardening
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        state: present
+        backup: true
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - regexp: "^#?PasswordAuthentication"
+          line: "PasswordAuthentication no"
+        - regexp: "^#?PermitRootLogin"
+          line: "PermitRootLogin prohibit-password"
+        - regexp: "^#?PubkeyAuthentication"
+          line: "PubkeyAuthentication yes"
+        - regexp: "^#?X11Forwarding"
+          line: "X11Forwarding no"
+      become: true
+      notify: restart sshd
+
+    # Update the system packages task to handle different distributions
+    - name: Update system packages (apt-based)
+      apt:
+        update_cache: yes
+        upgrade: yes
+      become: true
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Update system packages (dnf-based)
+      dnf:
+        update_cache: yes
+        name: '*'
+        state: latest
+      become: true
+      when: ansible_facts['os_family'] == "RedHat"
+
+    # Surface-specific configuration tasks
+    - name: Configure Surface device settings
+      block:
+        - name: Disable suspend on lid close
+          lineinfile:
+            path: "/etc/systemd/logind.conf"
+            regexp: "^#HandleLidSwitch="
+            line: "HandleLidSwitch=ignore"
+            state: present
+            backup: true
+          notify: "restart logind"
+          
+        - name: Create screen-off service file
+          copy:
+            dest: /etc/systemd/system/screen-off.service
+            content: |
+              [Unit]
+              Description=Enable virtual console blanking
+    
+              [Service]
+              Type=oneshot
+              Environment=TERM=linux
+              StandardOutput=tty
+              TTYPath=/dev/console
+              ExecStart=/usr/bin/setterm -blank 1
+    
+              [Install]
+              WantedBy=multi-user.target
+    
+        - name: Reload systemd daemon
+          systemd:
+            daemon_reload: true
+    
+        - name: Check if screen-off service is running
+          ansible.builtin.service_facts:
+          register: service_state
+    
+        - name: Start screen-off service
+          systemd:
+            name: screen-off.service
+            state: started
+          when: 
+            - "'screen-off.service' in service_state.ansible_facts.services"
+            - service_state.ansible_facts.services['screen-off.service'].state != 'running'
+    
+        - name: Enable screen-off service at boot
+          systemd:
+            name: screen-off.service
+            enabled: true
+      # Only run this block for Surface devices
+      when: 
+        - hostvars[inventory_hostname].device_model is defined
+        - hostvars[inventory_hostname].device_model == 'surface'
+      become: true
+
+  handlers:
+    - name: restart sshd
+      service:
+        name: sshd
+        state: restarted
+      become: true
+      
+    - name: restart logind
+      service:
+        name: systemd-logind
+        state: restarted
+      become: true
