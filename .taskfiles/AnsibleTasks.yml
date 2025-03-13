@@ -22,57 +22,57 @@ tasks:
     desc: List all the hosts
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible all -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml --list-hosts
+      - ansible all -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml --list-hosts
 
   prepare:
     desc: Prepare all the k8s nodes for running k3s
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-prepare.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-prepare.yml
 
   install:
     desc: Install Kubernetes on the nodes
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-installation.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-installation.yml
 
   nuke:
     desc: Uninstall Kubernetes on the nodes
     dir: "{{.ANSIBLE_DIR}}"
     interactive: true
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-nuke.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-nuke.yml
       - task: force-reboot
 
   ping:
     desc: Ping all the hosts
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible all -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml --one-line -m 'ping'
+      - ansible all -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml --one-line -m 'ping'
 
   uptime:
     desc: Uptime of all the hosts
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible all -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml --one-line -a 'uptime'
+      - ansible all -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml --one-line -a 'uptime'
 
   rollout-reboot:
     desc: Rollout a reboot across all the k8s nodes
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-rollout-reboot.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-rollout-reboot.yml
 
   force-reboot:
     desc: Reboot all the k8s nodes
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-reboot.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-reboot.yml
 
   force-poweroff:
     desc: Shutdown all the k8s nodes
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible kubernetes -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml -a '/usr/bin/systemctl poweroff' --become
+      - ansible kubernetes -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml -a '/usr/bin/systemctl poweroff' --become
 
   configure-nodes:
     desc: Configure all the k8s nodes
@@ -84,32 +84,32 @@ tasks:
     desc: Install MariaDB on the dbs nodes
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/db-install.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/db-install.yml
 
   db-configure-cluster:
     desc: Configure Galera cluster on the dbs nodes
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/db-configure-cluster.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/db-configure-cluster.yml
 
   db-reset:
     desc: Recreate the k3s db on an already configured Galera cluster
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/db-reset.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/db-reset.yml
 
   db-debug:
     desc: Debug DB vars
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/db-debug.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/db-debug.yml
 
   configure-pihole:
     desc: Configure Pi-hole on the pihole node
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-pihole.yml
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yml {{.ANSIBLE_PLAYBOOK_DIR}}/pihole-install.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-pihole.yml
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/pihole-install.yml
 
   configure-hosts:
     desc: Configure all hosts with basic settings
