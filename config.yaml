@@ -21,27 +21,32 @@ node_inventory:
     address: "10.0.10.26"
     controller: true
     mac_addr: "00:23:24:a2:50:d4"
-    network_interface: "en0"
+    network_interface: "eno0"
+    device_model: "m73"
   - name: "eyana"
     address: "10.0.10.28"
     controller: true
     mac_addr: "00:23:24:99:84:ac"
     network_interface: "en0"
+    device_model: "m73"
   - name: "jayden"
     address: "10.0.10.25"
     controller: true
     mac_addr: "00:23:24:a2:45:33"
     network_interface: "en0"
+    device_model: "m73"
   - name: "gpop"
     address: "10.0.10.29"
     controller: false
     mac_addr: "00:50:b6:1f:c7:3d"
-    network_interface: "en0"
+    network_interface: "enp0s20f0u2"
+    device_model: "surface"
   - name: "jamahl"
     address: "10.0.10.24"
     controller: false
     mac_addr: "a0:ce:c8:8b:63:07"
-    network_interface: "en0"
+    network_interface: "enp0s20f0u2c2"
+    device_model: "surface"
 
 # (REQUIRED) The DNS servers to use for the cluster nodes. (DEFAULT: Cloudflare DNS)
 dns_servers:

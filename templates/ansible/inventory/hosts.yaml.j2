@@ -6,10 +6,12 @@ all:
         {% for node in node_inventory if node.controller %}
         {{ node.name }}:
           ansible_host: {{ node.address }}
+          device_model: {{ node.device_model }}
         {% endfor %}
-    worker:
+    workers:
       hosts:
         {% for node in node_inventory if not node.controller %}
         {{ node.name }}:
           ansible_host: {{ node.address }}
+          device_model: {{ node.device_model }}
         {% endfor %}

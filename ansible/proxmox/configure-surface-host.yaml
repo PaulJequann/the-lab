@@ -1,5 +1,5 @@
 ---
-- hosts: surface-hosts
+- hosts: workers
   gather_facts: true
   name: "configure surface host"
   become: true
@@ -16,13 +16,13 @@
         backup: true
       notify: "restart logind"
 
-    - name: Update sleep on lid close configuration
-      lineinfile:
-        path: "{{ logind_conf_path }}"
-        regexp: "^#HandleLidSwitchch"
-        line: "HandleLidSwitchch=ignore"
-        state: present
-      notify: "restart logind"
+    # - name: Update sleep on lid close configuration
+    #   lineinfile:
+    #     path: "{{ logind_conf_path }}"
+    #     regexp: "^#HandleLidSwitchch"
+    #     line: "HandleLidSwitchch=ignore"
+    #     state: present
+    #   notify: "restart logind"
 
     - name: Create screen-off service file
       copy:
@@ -45,10 +45,17 @@
       systemd:
         daemon_reload: true
 
+    - name: Check if screen-off service is running
+      ansible.builtin.service_facts:
+      register: service_state
+
     - name: Start screen-off service
       systemd:
         name: screen-off.service
         state: started
+      when: 
+        - "'screen-off.service' in service_state.ansible_facts.services"
+        - service_state.ansible_facts.services['screen-off.service'].state != 'running'
 
     - name: Enable screen-off service at boot
       systemd:

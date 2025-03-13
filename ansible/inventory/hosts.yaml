@@ -5,13 +5,18 @@ all:
       hosts:
         cedes:
           ansible_host: 10.0.10.26
+          device_model: m73
         eyana:
           ansible_host: 10.0.10.28
+          device_model: m73
         jayden:
           ansible_host: 10.0.10.25
-    worker:
+          device_model: m73
+    workers:
       hosts:
         gpop:
           ansible_host: 10.0.10.29
+          device_model: surface
         jamahl:
           ansible_host: 10.0.10.24
+          device_model: surface
