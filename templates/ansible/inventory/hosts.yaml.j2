@@ -7,6 +7,7 @@ all:
         {{ node.name }}:
           ansible_host: {{ node.address }}
           device_model: {{ node.device_model }}
+          network_interface: {{ node.network_interface }}
         {% endfor %}
     workers:
       hosts:
@@ -14,4 +15,5 @@ all:
         {{ node.name }}:
           ansible_host: {{ node.address }}
           device_model: {{ node.device_model }}
+          network_interface: {{ node.network_interface }}
         {% endfor %}

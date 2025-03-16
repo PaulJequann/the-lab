@@ -1,0 +1,10 @@
+---
+- name: restart k3s service
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+
+- name: reload firewalld
+  ansible.builtin.systemd:
+    name: firewalld
+    state: reloaded

@@ -30,6 +30,12 @@ tasks:
     cmds:
       - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-prepare.yml
 
+  create:
+    desc: Create a Kubernetes cluster
+    dir: "{{.ANSIBLE_DIR}}"
+    cmds:
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-create.yaml
+
   install:
     desc: Install Kubernetes on the nodes
     dir: "{{.ANSIBLE_DIR}}"
@@ -41,8 +47,7 @@ tasks:
     dir: "{{.ANSIBLE_DIR}}"
     interactive: true
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-nuke.yml
-      - task: force-reboot
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-nuke.yaml
 
   ping:
     desc: Ping all the hosts
@@ -114,4 +119,4 @@ tasks:
   configure-hosts:
     desc: Configure all hosts with basic settings
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml -u pj -K {{.CLI_ARGS}}
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml -u pj -K -e "ansible_user=pj" {{.CLI_ARGS}}

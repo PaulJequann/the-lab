@@ -1,0 +1,132 @@
+---
+- name: Check if k3s is installed
+  check_mode: false
+  ansible.builtin.stat:
+    path: "/usr/local/bin/k3s"
+  register: k3s_binary_check
+
+- name: Verify k3s service exists
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/k3s.service"
+  register: k3s_service_check
+  when: k3s_binary_check.stat.exists
+
+# Stop k3s services
+- name: Stop k3s service
+  ansible.builtin.systemd:
+    name: k3s
+    state: stopped
+    enabled: false
+  when: k3s_binary_check.stat.exists and k3s_service_check.stat.exists
+  ignore_errors: true
+
+# Kill any remaining k3s processes
+- name: Kill any remaining k3s processes
+  ansible.builtin.shell: |
+    pkill -9 k3s || true
+    pkill -9 containerd || true
+    pkill -9 flannel || true
+    pkill -9 kubelet || true
+    pkill -9 kube-proxy || true
+  changed_when: true
+  ignore_errors: true
+
+# Delete k3s and kubernetes directories
+- name: Delete k3s directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/rancher/k3s
+    - /etc/rancher/node
+    - "{{ k3s_data_dir | default('/var/lib/rancher/k3s') }}"
+    - /var/lib/kubelet
+    - /etc/kubernetes
+    - /run/k3s
+    - /run/flannel
+    - /var/lib/cni
+  ignore_errors: true
+
+- name: Delete k3s binary
+  ansible.builtin.file:
+    path: /usr/local/bin/k3s
+    state: absent
+  ignore_errors: true
+
+- name: Delete systemd service files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/k3s.service
+    - /etc/systemd/system/k3s-agent.service
+  ignore_errors: true
+
+# Network cleanup
+- name: Clean up CNI configuration
+  ansible.builtin.file:
+    path: /etc/cni/net.d
+    state: absent
+  ignore_errors: true
+
+- name: Clean up containerd socket and runtime directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /run/k3s
+    - /run/containerd
+    - /var/lib/containerd
+    - /var/run/k3s
+    - /var/run/containerd
+  ignore_errors: true
+
+# Network interface cleanup
+- name: Remove flannel network interfaces
+  ansible.builtin.shell: |
+    ip link delete flannel.1 || true
+    ip link delete cni0 || true
+  changed_when: true
+  ignore_errors: true
+
+# Firewall cleanup
+- name: Remove firewall rules for Kubernetes ports
+  ansible.builtin.firewalld:
+    port: "{{ item }}"
+    permanent: true
+    state: disabled
+    immediate: true
+  loop:
+    - 6443/tcp  # Kubernetes API
+    - 2379/tcp  # etcd client
+    - 2380/tcp  # etcd peer
+    - 10250/tcp # Kubelet
+  ignore_errors: true
+  when: ansible_facts['os_family'] == "RedHat"
+
+# Iptables cleanup
+- name: Remove iptables rules
+  ansible.builtin.shell: |
+    iptables -F
+    iptables -X
+    iptables -t nat -F
+    iptables -t nat -X
+    iptables -t mangle -F
+    iptables -t mangle -X
+    iptables -P INPUT ACCEPT
+    iptables -P FORWARD ACCEPT
+    iptables -P OUTPUT ACCEPT
+  changed_when: true
+  ignore_errors: true
+  when: ansible_facts['os_family'] == "RedHat"
+
+# Final system cleanup
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  ignore_errors: true
+
+- name: Reboot node to complete cleanup
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+  when: k3s_uninstall_reboot | default(false)

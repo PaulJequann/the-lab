@@ -7,6 +7,9 @@ k3s_data_dir: /var/lib/rancher/k3s
 k3s_kubeconfig_file: /etc/rancher/k3s/k3s.yaml
 control_plane_endpoint: "{{ control_plane_endpoint }}"
 kube_vip_version: "{{ kube_vip_version }}"
+
+# Force configuration update
+k3s_force_config_update: true
 k3s_server_config:
   tls-san:
     - "{{ control_plane_endpoint }}"
@@ -14,6 +17,7 @@ k3s_server_config:
     - local-storage
     - servicelb
     - traefik
+  # something below is breaking kube-vip being available. or servicelb above...
   disable-helm-controller: true
   disable-kube-proxy: true
   disable-network-policy: true

@@ -1,0 +1,17 @@
+k3s_kubeconfig_file: /etc/rancher/k3s/k3s.yaml
+cilium_repo_url: https://helm.cilium.io
+cilium_version: 1.17.1
+cilium_namespace: kube-system
+cilium_values:
+  operator:
+    replicas: 1
+  kubeProxyReplacement: true
+  l2announcements:
+    enabled: true
+  k8sServiceHost: 127.0.0.1
+  k8sServicePort: 6444
+  hubble:
+    relay:
+      enabled: True
+    ui:
+      enabled: True

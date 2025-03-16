@@ -1,0 +1,48 @@
+---
+- name: Install K3s Cluster
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Check if node is reachable
+      ping:
+      
+    - name: Get facts about nodes
+      setup:
+
+  tasks:
+    - name: Include K3s role for control plane nodes
+      include_role:
+        name: k3s
+        
+    - name: Include Cilium role
+      include_role:
+        name: cilium
+
+  post_tasks:
+    - name: Get kubeconfig from control plane
+      fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ playbook_dir }}/../../kubeconfig"
+        flat: yes
+        mode: 0644
+      when: inventory_hostname == groups['controllers'][0]
+      
+    - name: Update kubeconfig with external address
+      delegate_to: localhost
+      become: false
+      replace:
+        path: "{{ playbook_dir }}/../../kubeconfig"
+        regexp: 'https://127.0.0.1:6443'
+        replace: 'https://{{ control_plane_endpoint | default(groups["controllers"][0]) }}:6443'
+        # replace: 'https://{{ hostvars[groups["controllers"][0]].ansible_host | default(groups["controllers"][0]) }}:6443'
+      when: inventory_hostname == groups['controllers'][0]
+      
+    - name: Set permissions for kubeconfig
+      delegate_to: localhost
+      become: false
+      file:
+        path: "{{ playbook_dir }}/../../kubeconfig"
+        mode: '0600'
+      when: inventory_hostname == groups['controllers'][0]

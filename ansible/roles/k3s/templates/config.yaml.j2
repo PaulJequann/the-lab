@@ -4,7 +4,7 @@ cluster-init: true
 server: https://{{ control_plane_endpoint }}:6443
 {% endif %}
 token-file: {{ k3s_token_file }}
-{% if 'masters' in group_names %}
+{% if 'controllers' in group_names %}
 {{ k3s_server_config | to_nice_yaml }}
 {% endif %}
 snapshotter: stargz

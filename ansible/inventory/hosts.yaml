@@ -6,17 +6,22 @@ all:
         cedes:
           ansible_host: 10.0.10.26
           device_model: m73
+          network_interface: eno1
         eyana:
           ansible_host: 10.0.10.28
           device_model: m73
+          network_interface: eno1
         jayden:
           ansible_host: 10.0.10.25
           device_model: m73
+          network_interface: eno1
     workers:
       hosts:
         gpop:
           ansible_host: 10.0.10.29
           device_model: surface
+          network_interface: enp0s20f0u2
         jamahl:
           ansible_host: 10.0.10.24
           device_model: surface
+          network_interface: enp0s20f0u2c2

@@ -25,6 +25,17 @@
         sudo_group: "{{ 'wheel' if ansible_facts['os_family'] == 'RedHat' else 'sudo' }}"
       
   tasks:
+    - name: Networking
+      block:
+        - name: Networking | Set hostname to inventory hostname
+          ansible.builtin.hostname:
+            name: "{{ inventory_hostname }}"
+        - name: Networking | Update /etc/hosts to include inventory hostname
+          ansible.builtin.blockinfile:
+            path: /etc/hosts
+            block: |
+              127.0.1.1   {{ inventory_hostname }}
+              
     - name: Create an ansible user with sudo privileges
       user:
         name: ansible

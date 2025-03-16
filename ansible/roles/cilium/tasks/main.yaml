@@ -1,0 +1,111 @@
+---
+# Block for Helm binary installation on all nodes
+- name: Install Helm binary
+  block:
+    - name: Ensure files directory exists
+      ansible.builtin.file:
+        path: "{{ role_path }}/files"
+        state: directory
+        mode: 0755
+      delegate_to: localhost
+      run_once: true
+    
+    - name: Download Helm binary
+      ansible.builtin.get_url:
+        url: https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz
+        dest: "/tmp/helm.tar.gz"
+        mode: 0755
+        timeout: 60
+      delegate_to: localhost
+      run_once: true
+      register: helm_binary
+    
+    - name: Extract Helm binary locally
+      ansible.builtin.unarchive:
+        src: "/tmp/helm.tar.gz"
+        dest: "/tmp/"
+        remote_src: yes
+      delegate_to: localhost
+      run_once: true
+      when: helm_binary.changed
+    
+    - name: Copy Helm binary to nodes
+      ansible.builtin.copy:
+        src: "/tmp/linux-amd64/helm"
+        dest: "/usr/local/bin/helm"
+        owner: root
+        group: root
+        mode: 0755
+    
+    - name: Clean up local Helm installation files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "/tmp/helm.tar.gz"
+        - "/tmp/linux-amd64"
+      delegate_to: localhost
+      run_once: true
+    
+
+# # Block for Cilium installation (only on first controller)
+# - name: Deploy Cilium CNI
+#   block:
+#     - name: Verify Helm is installed and accessible
+#       ansible.builtin.command:
+#         cmd: helm version --short
+#       register: helm_version_check
+#       changed_when: false
+#       retries: 3
+#       delay: 5
+#       until: helm_version_check.rc == 0
+    
+#     - name: Add Cilium Helm repo
+#       ansible.builtin.command:
+#         cmd: helm repo add cilium {{ cilium_repo_url }}
+#       register: add_repo_result
+#       changed_when: add_repo_result.rc == 0
+      
+#     - name: Update Helm repos
+#       ansible.builtin.command:
+#         cmd: helm repo update
+#       register: update_repo_result
+#       changed_when: update_repo_result.rc == 0
+    
+#     - name: Install Cilium
+#       kubernetes.core.helm:
+#         name: cilium
+#         chart_ref: cilium
+#         chart_repo_url: "{{ cilium_repo_url }}"
+#         chart_version: "{{ cilium_version }}"
+#         release_namespace: "{{ cilium_namespace }}"
+#         values: "{{ cilium_values }}"
+#         kubeconfig: "{{ k3s_kubeconfig_file }}"
+#       environment:
+#         PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+#         KUBECONFIG: "{{ k3s_kubeconfig_file }}"
+    
+#     - name: Wait for Cilium CRDs
+#       kubernetes.core.k8s_info:
+#         kind: CustomResourceDefinition
+#         name: "{{ item }}"
+#       loop:
+#         - ciliuml2announcementpolicies.cilium.io
+#         - ciliumloadbalancerippools.cilium.io
+#       register: crd_result
+#       until: crd_result.resources is defined and crd_result.resources | length > 0
+#       retries: 10
+#       delay: 15
+#       environment:
+#         KUBECONFIG: "{{ k3s_kubeconfig_file }}"
+    
+#     - name: Apply Cilium resources
+#       kubernetes.core.k8s:
+#         template: "{{ item }}"
+#       loop:
+#         - ciliuml2announcementpolicy.yaml
+#         - ciliumloadbalancerippool.yaml
+#   environment:
+#     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+#     KUBECONFIG: "{{ k3s_kubeconfig_file }}"
+#   when: inventory_hostname == groups['controllers'][0]
