@@ -1,0 +1,6 @@
+---
+api_port: 6443
+server_group: controllers
+agent_group: workers
+cluster_cidr: 10.42.0.0/16
+service_cidr: 10.43.0.0/16

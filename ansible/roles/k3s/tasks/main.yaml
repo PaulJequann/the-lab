@@ -103,16 +103,16 @@
   # until: k3s_service is succeeded
   retries: 5
 
-# - name: Get Kubernetes config file
-#   run_once: true
-#   ansible.builtin.slurp:
-#     src: "{{ k3s_kubeconfig_file }}"
-#   register: kubeconfig_base64
+- name: Get Kubernetes config file
+  run_once: true
+  ansible.builtin.slurp:
+    src: "{{ k3s_kubeconfig_file }}"
+  register: kubeconfig_base64
 
-# - name: Write Kubernetes config file with the correct cluster address
-#   ansible.builtin.copy:
-#     content: "{{ kubeconfig_base64.content | b64decode | replace('127.0.0.1', control_plane_endpoint) }}"
-#     dest: "{{ playbook_dir }}/kubeconfig.yaml"
-#     mode: 0600
-#   delegate_to: localhost
-#   run_once: true
+- name: Write Kubernetes config file with the correct cluster address
+  ansible.builtin.copy:
+    content: "{{ kubeconfig_base64.content | b64decode | replace('127.0.0.1', control_plane_endpoint) }}"
+    dest: "{{ playbook_dir }}/kubeconfig.yaml"
+    mode: 0600
+  delegate_to: localhost
+  run_once: true

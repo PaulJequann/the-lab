@@ -1,0 +1,10 @@
+---
+- name: Restart firewalld
+  ansible.builtin.service:
+    name: firewalld
+    state: restarted
+    
+- name: Reboot
+  ansible.builtin.reboot:
+    msg: Rebooting nodes
+    reboot_timeout: 3600

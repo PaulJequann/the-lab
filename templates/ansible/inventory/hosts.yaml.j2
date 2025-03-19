@@ -1,7 +1,7 @@
 ---
 all:
   children:
-    controllers:
+    {{ server_group }}:
       hosts:
         {% for node in node_inventory if node.controller %}
         {{ node.name }}:
@@ -9,7 +9,7 @@ all:
           device_model: {{ node.device_model }}
           network_interface: {{ node.network_interface }}
         {% endfor %}
-    workers:
+    {{ agent_group }}:
       hosts:
         {% for node in node_inventory if not node.controller %}
         {{ node.name }}:

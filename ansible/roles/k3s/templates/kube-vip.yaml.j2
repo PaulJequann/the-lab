@@ -33,8 +33,8 @@ spec:
               value: "true"
             - name: vip_leaderelection
               value: "true"
-#            - name: lb_enable
-#              value: "true"
+            - name: lb_enable
+              value: "true"
             - name: vip_interface
               value: {{ hostvars[inventory_hostname]['network_interface'] }}
           securityContext:

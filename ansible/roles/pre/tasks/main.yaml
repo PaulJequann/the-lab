@@ -1,0 +1,175 @@
+---
+# Need to research security implications of enabling IP forwarding
+# https://www.linux.com/training-tutorials/configuring-ip-forwarding-linux/
+
+# - name: Enable IPv4 forwarding
+#   ansible.builtin.sysctl:
+#     name: net.ipv4.ip_forward
+#     value: '1'
+#     state: present
+#     sysctl_set: yes
+#     reload: yes
+
+# - name: Enable IPv6 forwarding
+#   ansible.builtin.sysctl:
+#     name: net.ipv6.conf.all.forwarding
+#     value: '1'
+#     state: present
+#     sysctl_set: yes
+#     reload: yes
+
+# - name: Add IPv4 and IPv6 forwarding to sysctl.conf
+#   ansible.builtin.blockinfile:
+#     path: /etc/sysctl.conf
+#     block: |
+#       # Enable IPv4 forwarding
+#       net.ipv4.ip_forward = 1
+      
+#       # Enable IPv6 forwarding
+#       net.ipv6.conf.all.forwarding = 1
+#     marker: "# {mark} ANSIBLE MANAGED BLOCK - IP FORWARDING"
+#     create: yes
+#     mode: '0644'
+
+- name: Populate service facts
+  ansible.builtin.service_facts:
+
+- name: Allow firewalld exceptions
+  # when:
+  #   - ansible_facts.services['firewalld'] is defined 
+  #   - ansible_facts.services['firewalld'].state == 'running'
+  block:
+    - name: Open Kubernetes API port in firewalld
+      ansible.builtin.firewalld:
+        port: "{{ api_port | default('6443') }}/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+      # notify: Restart firewalld
+        
+    - name: Open etcd client port in firewalld
+      ansible.builtin.firewalld:
+        port: "2379/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+        
+    - name: Open etcd server-to-server port in firewalld
+      ansible.builtin.firewalld:
+        port: "2380/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+
+    - name: Open Kubelet metrics port in firewalld
+      ansible.builtin.firewalld:
+        port: "10250/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+        
+    - name: Allow cluster nodes in trusted zone
+      ansible.builtin.firewalld:
+        source: "{{ item }}"
+        zone: trusted
+        permanent: true
+        state: enabled
+        immediate: true
+      loop: >-
+        {{
+          (
+            groups['controllers'] | default([])
+            + groups['workers'] | default([])
+          )
+          | map('extract', hostvars, ['ansible_default_ipv4', 'address'])
+          | flatten | unique | list
+        }}
+
+    - name: If firewalld enabled, allow default CIDRs
+      ansible.posix.firewalld:
+        source: "{{ item }}"
+        zone: trusted
+        state: enabled
+        permanent: true
+        immediate: true
+      loop: "{{ (cluster_cidr + ',' + service_cidr) | split(',') }}"
+  notify: Restart firewalld
+
+# - name: Add br_netfilter to /etc/modules-load.d/
+#   ansible.builtin.copy:
+#     content: "br_netfilter"
+#     dest: /etc/modules-load.d/br_netfilter.conf
+#     mode: "u=rw,g=,o="
+#   when: (ansible_os_family == 'RedHat' or ansible_distribution == 'Archlinux')
+
+# - name: Load br_netfilter
+#   community.general.modprobe:
+#     name: br_netfilter
+#     state: present
+#   when: (ansible_os_family == 'RedHat' or ansible_distribution == 'Archlinux')
+
+- name: Set bridge-nf-call-iptables (just to be sure)
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    state: present
+    reload: true
+  when: (ansible_os_family == 'RedHat' or ansible_distribution == 'Archlinux')
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+
+# Iptables v1.8.0-1.8.4 have a specific bug with K3s. https://github.com/k3s-io/k3s/issues/3117
+- name: If iptables v1.8.0-1.8.4, warn user  # noqa ignore-errors
+  when:
+    - ansible_facts.packages['iptables'] is defined
+    - ansible_facts.packages['iptables'][0]['version'] is version('1.8.5', '<')
+    - ansible_facts.packages['iptables'][0]['version'] is version('1.7.9', '>')
+  ansible.builtin.fail:
+    msg:
+      - "Warning: Iptables {{ ansible_facts.packages['iptables'][0]['version'] }} found."
+      - "Add '--prefer-bundled-bin' to extra_server_args variable to use the bundled iptables binary."
+  ignore_errors: true
+
+- name: Add /usr/local/bin to sudo secure_path
+  ansible.builtin.lineinfile:
+    line: 'Defaults    secure_path = /sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin'
+    regexp: "Defaults(\\s)*secure_path(\\s)*="
+    state: present
+    insertafter: EOF
+    path: /etc/sudoers
+    validate: 'visudo -cf %s'
+  when: ansible_os_family == 'RedHat'
+
+- name: System Configuration (2)
+  block:
+    - name: System Configuration (2) | Enable kernel modules now
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop: [br_netfilter, ip_vs, ip_vs_rr, overlay, rbd]
+    - name: System Configuration (2) | Enable kernel modules on boot
+      ansible.builtin.copy:
+        mode: 0644
+        content: "{{ item }}"
+        dest: "/etc/modules-load.d/{{ item }}.conf"
+      loop: [br_netfilter, ip_vs, ip_vs_rr, overlay, rbd]
+    - name: System Configuration (2) | Set sysctls
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+        reload: true
+      with_dict: "{{ sysctl_config }}"
+      vars:
+        sysctl_config:
+          net.ipv4.ip_forward: 1
+          net.ipv4.conf.all.forwarding: 1
+          net.ipv4.conf.all.rp_filter: 0
+          net.ipv4.conf.default.rp_filter: 0
+          net.ipv6.conf.all.forwarding: 1
+          net.bridge.bridge-nf-call-iptables: 1
+          net.bridge.bridge-nf-call-ip6tables: 1
+          fs.inotify.max_user_watches: 524288
+          fs.inotify.max_user_instances: 512
+  notify: Reboot
