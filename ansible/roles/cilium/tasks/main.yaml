@@ -47,6 +47,25 @@
       delegate_to: localhost
       run_once: true
     
+    - name: Create Helm config directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: 0755
+      loop:
+        - "/root/.config/helm"
+        - "/root/.cache/helm/repository"
+        - "/root/.local/share/helm/plugins"
+
+    - name: Create .bashrc Helm configuration
+      ansible.builtin.blockinfile:
+        path: /root/.bashrc
+        block: |
+          # Helm configuration
+          export KUBECONFIG={{ k3s_kubeconfig_file }}
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - HELM CONFIG"
+        create: yes
+        mode: 0644
 
 # Block for Cilium installation (only on first controller)
 - name: Deploy Cilium CNI
@@ -60,17 +79,29 @@
       delay: 5
       until: helm_version_check.rc == 0
     
+    - name: Set up initial Helm configuration
+      ansible.builtin.shell: |
+        mkdir -p ~/.config/helm/
+        echo "apiVersion: v1
+        repositories: []" > ~/.config/helm/repositories.yaml
+      args:
+        creates: ~/.config/helm/repositories.yaml
+    
     - name: Add Cilium Helm repo
       ansible.builtin.command:
         cmd: helm repo add cilium {{ cilium_repo_url }}
       register: add_repo_result
       changed_when: add_repo_result.rc == 0
+      environment:
+        KUBECONFIG: "{{ k3s_kubeconfig_file }}"
       
     - name: Update Helm repos
       ansible.builtin.command:
         cmd: helm repo update
       register: update_repo_result
       changed_when: update_repo_result.rc == 0
+      environment:
+        KUBECONFIG: "{{ k3s_kubeconfig_file }}"
     
     - name: Install Cilium
       kubernetes.core.helm:

@@ -103,6 +103,42 @@
   # until: k3s_service is succeeded
   retries: 5
 
+- name: Configure system-wide kubeconfig
+  block:
+    - name: Create /etc/profile.d/kubeconfig.sh
+      ansible.builtin.copy:
+        content: |
+          # Set KUBECONFIG environment variable
+          export KUBECONFIG={{ k3s_kubeconfig_file }}
+        dest: /etc/profile.d/kubeconfig.sh
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Create kubeconfig symlink in root's home
+      ansible.builtin.file:
+        src: "{{ k3s_kubeconfig_file }}"
+        dest: "/root/.kube/config"
+        state: link
+        force: yes
+      ignore_errors: yes
+      
+    - name: Ensure directory exists for root's kube config
+      ansible.builtin.file:
+        path: "/root/.kube"
+        state: directory
+        mode: 0700
+        owner: root
+        group: root
+
+    - name: Copy kubeconfig to root's home
+      ansible.builtin.copy:
+        src: "{{ k3s_kubeconfig_file }}"
+        dest: "/root/.kube/config"
+        remote_src: yes
+        mode: 0600
+      when: inventory_hostname in groups['controllers']
+
 - name: Get Kubernetes config file
   run_once: true
   ansible.builtin.slurp:
