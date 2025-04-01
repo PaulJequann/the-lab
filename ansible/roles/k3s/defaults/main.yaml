@@ -11,6 +11,8 @@ kube_vip_version: "v0.8.9"
 # Force configuration update
 k3s_force_config_update: true
 k3s_server_config:
+  cluster-cidr: "10.0.12.0/24"
+  service-cidr: "10.0.13.0/24"
   tls-san:
     - "10.0.10.50"
   disable:
@@ -19,7 +21,7 @@ k3s_server_config:
     - traefik
   # something below is breaking kube-vip being available. or servicelb above...
   disable-helm-controller: true
-  disable-kube-proxy: true
+#  disable-kube-proxy: true
   disable-network-policy: true
   flannel-backend: none
   secrets-encryption: true

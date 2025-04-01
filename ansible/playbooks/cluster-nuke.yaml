@@ -11,6 +11,7 @@
         Type YES I WANT TO DESTROY THIS CLUSTER to proceed
       default: "n"
       private: false
+
   pre_tasks:
     - name: Check for confirmation
       ansible.builtin.fail:
@@ -20,13 +21,37 @@
     - name: Pausing for 5 seconds...
       ansible.builtin.pause:
         seconds: 5
+
+    - name: Check if node is reachable
+      ping:
       
-    - name: Set variables for uninstall
-      set_fact:
-        k3s_uninstall_reboot: true
+    - name: Get facts about nodes
+      setup:
         
   tasks:
+    - name: Include Cilium uninstall role
+      include_role:
+        name: cilium
+        tasks_from: uninstall
+      when: inventory_hostname in groups['controllers']
+
     - name: Uninstall k3s
       ansible.builtin.include_role:
         name: k3s
         tasks_from: uninstall
+
+  post_tasks:
+    - name: Remove local kubeconfig
+      delegate_to: localhost
+      become: false
+      file:
+        path: "{{ playbook_dir }}/../../kubeconfig"
+        state: absent
+      run_once: true
+      ignore_errors: true
+      when: inventory_hostname == groups['controllers'][0]
+
+    - name: Reboot nodes to complete cleanup
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+      when: inventory_hostname in groups['controllers'] or inventory_hostname in groups['workers']

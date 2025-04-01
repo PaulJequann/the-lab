@@ -45,6 +45,7 @@
     - /run/k3s
     - /run/flannel
     - /var/lib/cni
+    - /root/.kube/
   ignore_errors: true
 
 - name: Delete k3s binary
@@ -82,10 +83,14 @@
   ignore_errors: true
 
 # Network interface cleanup
-- name: Remove flannel network interfaces
+- name: Remove network interfaces
   ansible.builtin.shell: |
-    ip link delete flannel.1 || true
-    ip link delete cni0 || true
+    ip link delete flannel.1 2>/dev/null || true
+    ip link delete cni0 2>/dev/null || true
+    # Cilium interface cleanup
+    ip link delete cilium_host 2>/dev/null || true
+    ip link delete cilium_net 2>/dev/null || true
+    ip link delete cilium_vxlan 2>/dev/null || true
   changed_when: true
   ignore_errors: true
 
@@ -126,7 +131,7 @@
     daemon_reload: true
   ignore_errors: true
 
-- name: Reboot node to complete cleanup
-  ansible.builtin.reboot:
-    reboot_timeout: 300
-  when: k3s_uninstall_reboot | default(false)
+# - name: Reboot node to complete cleanup
+#   ansible.builtin.reboot:
+#     reboot_timeout: 300
+#   when: k3s_uninstall_reboot | default(false)

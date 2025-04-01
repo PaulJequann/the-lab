@@ -33,10 +33,23 @@ spec:
               value: "true"
             - name: vip_leaderelection
               value: "true"
+            - name: vip_leaseduration
+              value: "15"
+            - name: vip_renewdeadline
+              value: "10"
+            - name: vip_retryperiod
+              value: "2"
             - name: lb_enable
               value: "true"
             - name: vip_interface
               value: {{ hostvars[inventory_hostname]['network_interface'] }}
+              # Add these new env vars
+            - name: k8s_api_enable
+              value: "true"  # Enable explicit API server config
+            - name: k8s_api_server
+              value: "https://127.0.0.1:6443"  # Use local API server
+            - name: k8s_api_insecure
+              value: "true"  # Skip certificate validation if needed
           securityContext:
             capabilities:
               add:

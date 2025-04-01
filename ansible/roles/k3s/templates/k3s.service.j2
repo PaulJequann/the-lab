@@ -21,9 +21,7 @@ Restart=always
 RestartSec=5s
 ExecStartPre=-/sbin/modprobe br_netfilter
 ExecStartPre=-/sbin/modprobe overlay
-ExecStart=/usr/local/bin/k3s \
-    {{ k3s_server_or_agent }} \
-    {{ k3s_extra_args }}
+ExecStart=/usr/local/bin/k3s {{ 'server' if 'controllers' in group_names else 'agent' }}
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,89 @@
+---
+- name: Check if Cilium is installed
+  kubernetes.core.k8s_info:
+    kind: Namespace
+    name: cilium
+  register: cilium_ns
+  ignore_errors: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_file }}"
+
+- name: Get Helm version
+  ansible.builtin.command:
+    cmd: helm version --short
+  register: helm_version_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Uninstall Cilium Helm chart
+  kubernetes.core.helm:
+    name: cilium
+    release_namespace: "{{ cilium_namespace | default('kube-system') }}"
+    state: absent
+    kubeconfig: "{{ k3s_kubeconfig_file }}"
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_file }}"
+  when: 
+    - helm_version_check is succeeded
+    - cilium_ns.resources is defined and cilium_ns.resources | length > 0
+  ignore_errors: true
+
+- name: Wait for Cilium pods to be terminated
+  ansible.builtin.shell: |
+    kubectl --kubeconfig={{ k3s_kubeconfig_file }} get pods -n kube-system | grep -c cilium || true
+  register: cilium_pods
+  until: cilium_pods.stdout == "0" or cilium_pods.rc != 0
+  retries: 10
+  delay: 5
+  ignore_errors: true
+  changed_when: false
+
+- name: Remove Cilium network interfaces
+  ansible.builtin.shell: |
+    ip link delete cilium_host 2>/dev/null || true
+    ip link delete cilium_net 2>/dev/null || true
+    ip link delete cilium_vxlan 2>/dev/null || true
+  changed_when: true
+  ignore_errors: true
+
+- name: Check for Cilium BPF mounts
+  ansible.builtin.shell: |
+    mount | grep -E "bpf|cilium" || true
+  register: cilium_mounts
+  changed_when: false
+  ignore_errors: true
+
+- name: Remove Cilium BPF mounts
+  ansible.builtin.shell: |
+    # Unmount BPF filesystem first
+    if mount | grep "bpffs on /sys/fs/bpf"; then
+      umount /sys/fs/bpf 2>/dev/null || true
+    fi
+    
+    # Unmount any cgroupv2 mounts
+    for mount in $(mount | grep "/var/run/cilium/cgroupv2" | awk '{print $3}'); do
+      umount $mount 2>/dev/null || true
+    done
+    
+    # Clean up directories with special handling for cgroupv2
+    if [ -d "/var/run/cilium/cgroupv2" ]; then
+      find /var/run/cilium/cgroupv2 -type d -exec umount {} \; 2>/dev/null || true
+      # Use rm with force option
+      rm -rf /var/run/cilium/cgroupv2 2>/dev/null || true
+    fi
+    
+    # Clean up remaining directories
+    rm -rf /var/run/cilium /var/lib/cilium 2>/dev/null || true
+  changed_when: true
+  ignore_errors: true
+
+- name: Delete Cilium configuration files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/var/run/cilium"
+    - "/var/lib/cilium"
+    - "/opt/cni/bin/cilium-cni"
+    - "/etc/cni/net.d/05-cilium.conf"
+  ignore_errors: true

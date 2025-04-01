@@ -2,15 +2,21 @@ k3s_kubeconfig_file: /etc/rancher/k3s/k3s.yaml
 cilium_repo_url: https://helm.cilium.io
 cilium_version: {{ cilium_version }}
 cilium_namespace: kube-system
+load_balancer_ip_pool: {{ load_balancer_ip_pool }}
 cilium_values:
   kubeConfigPath: {{ k3s_kubeconfig_file }}
   operator:
     replicas: 1
   kubeProxyReplacement: true
+  ipam:
+    mode: "cluster-pool"
+    operator:
+      clusterPoolIPv4PodCIDRList: 
+      - {{ cluster_cidr }}
   l2announcements:
     enabled: true
-  k8sServiceHost: 127.0.0.1
-  k8sServicePort: 6444
+  k8sServiceHost: {{ control_plane_endpoint }}
+  k8sServicePort: {{ api_port }}
   hubble:
     relay:
       enabled: {{ hubble_relay_enabled }}

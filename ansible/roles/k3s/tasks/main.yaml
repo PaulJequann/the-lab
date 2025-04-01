@@ -104,6 +104,7 @@
   retries: 5
 
 - name: Configure system-wide kubeconfig
+  when: inventory_hostname in groups['controllers']
   block:
     - name: Create /etc/profile.d/kubeconfig.sh
       ansible.builtin.copy:
@@ -137,7 +138,6 @@
         dest: "/root/.kube/config"
         remote_src: yes
         mode: 0600
-      when: inventory_hostname in groups['controllers']
 
 - name: Get Kubernetes config file
   run_once: true
