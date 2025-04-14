@@ -25,28 +25,36 @@
         name: cilium
 
   post_tasks:
-    - name: Get kubeconfig from control plane
-      fetch:
-        src: /etc/rancher/k3s/k3s.yaml
-        dest: "{{ playbook_dir }}/../../kubeconfig"
-        flat: yes
-        mode: 0644
+    - name: Local configuration
       when: inventory_hostname == groups['controllers'][0]
-      
-    - name: Update kubeconfig with external address
-      delegate_to: localhost
-      become: false
-      replace:
-        path: "{{ playbook_dir }}/../../kubeconfig"
-        regexp: 'https://127.0.0.1:6443'
-        replace: 'https://{{ control_plane_endpoint | default(groups["controllers"][0]) }}:6443'
-        # replace: 'https://{{ hostvars[groups["controllers"][0]].ansible_host | default(groups["controllers"][0]) }}:6443'
-      when: inventory_hostname == groups['controllers'][0]
-      
-    - name: Set permissions for kubeconfig
-      delegate_to: localhost
-      become: false
-      file:
-        path: "{{ playbook_dir }}/../../kubeconfig"
-        mode: '0600'
-      when: inventory_hostname == groups['controllers'][0]
+      run_once: true
+      block:
+        - name: Create local .kube directory
+          ansible.builtin.file:
+            path: "{{ lookup('ansible.builtin.env', 'HOME') + '/.kube' }}"
+            mode: 0755
+            state: directory
+          delegate_to: localhost
+          become: false
+
+        - name: Get Kubernetes config file
+          run_once: true
+          ansible.builtin.slurp:
+            src: /etc/rancher/k3s/k3s.yaml
+          register: kubeconfig_base64
+
+        - name: Write Kubernetes config file to .kube with the correct cluster address
+          ansible.builtin.copy:
+            content: "{{ kubeconfig_base64.content | b64decode | replace('127.0.0.1', control_plane_endpoint) }}"
+            dest: "{{ lookup('ansible.builtin.env', 'HOME') + '/.kube' + '/config' }}"
+            mode: 0600
+          delegate_to: localhost
+          become: false
+
+        - name: Write Kubernetes config file to project directory with the correct cluster address
+          ansible.builtin.copy:
+            content: "{{ kubeconfig_base64.content | b64decode | replace('127.0.0.1', control_plane_endpoint) }}"
+            dest: "{{ playbook_dir }}/../../kubeconfig'"
+            mode: 0600
+          delegate_to: localhost
+          become: false

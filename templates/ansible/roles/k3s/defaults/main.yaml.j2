@@ -19,9 +19,8 @@ k3s_server_config:
     - local-storage
     - servicelb
     - traefik
-  # something below is breaking kube-vip being available. or servicelb above...
   disable-helm-controller: true
-#  disable-kube-proxy: true
+  disable-kube-proxy: true
   disable-network-policy: true
   flannel-backend: none
   secrets-encryption: true

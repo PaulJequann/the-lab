@@ -25,6 +25,12 @@
     mode: 0755
   when: not k3s_check_installed.stat.exists
 
+- name: Add variable to environment file
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    line: KUBECONFIG={{ k3s_kubeconfig_file }}
+    regexp: '^KUBECONFIG='
+
 - name: Ensure config directories exist
   ansible.builtin.file:
     path: "{{ item }}"
@@ -100,55 +106,4 @@
     enabled: true
     state: started
   register: k3s_service
-  # until: k3s_service is succeeded
   retries: 5
-
-- name: Configure system-wide kubeconfig
-  when: inventory_hostname in groups['controllers']
-  block:
-    - name: Create /etc/profile.d/kubeconfig.sh
-      ansible.builtin.copy:
-        content: |
-          # Set KUBECONFIG environment variable
-          export KUBECONFIG={{ k3s_kubeconfig_file }}
-        dest: /etc/profile.d/kubeconfig.sh
-        owner: root
-        group: root
-        mode: 0644
-
-    - name: Create kubeconfig symlink in root's home
-      ansible.builtin.file:
-        src: "{{ k3s_kubeconfig_file }}"
-        dest: "/root/.kube/config"
-        state: link
-        force: yes
-      ignore_errors: yes
-      
-    - name: Ensure directory exists for root's kube config
-      ansible.builtin.file:
-        path: "/root/.kube"
-        state: directory
-        mode: 0700
-        owner: root
-        group: root
-
-    - name: Copy kubeconfig to root's home
-      ansible.builtin.copy:
-        src: "{{ k3s_kubeconfig_file }}"
-        dest: "/root/.kube/config"
-        remote_src: yes
-        mode: 0600
-
-- name: Get Kubernetes config file
-  run_once: true
-  ansible.builtin.slurp:
-    src: "{{ k3s_kubeconfig_file }}"
-  register: kubeconfig_base64
-
-- name: Write Kubernetes config file with the correct cluster address
-  ansible.builtin.copy:
-    content: "{{ kubeconfig_base64.content | b64decode | replace('127.0.0.1', control_plane_endpoint) }}"
-    dest: "{{ playbook_dir }}/kubeconfig.yaml"
-    mode: 0600
-  delegate_to: localhost
-  run_once: true

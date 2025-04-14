@@ -18,6 +18,19 @@ spec:
         app.kubernetes.io/instance: kube-vip
         app.kubernetes.io/name: kube-vip
     spec:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+        node-role.kubernetes.io/master: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/master
+                operator: Exists
+            - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
       containers:
         - name: kube-vip
           image: ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
@@ -29,6 +42,8 @@ spec:
               value: {{ control_plane_endpoint }}
             - name: vip_arp
               value: "true"
+            - name: vip_interface
+              value: {{ hostvars[inventory_hostname]['network_interface'] }}
             - name: cp_enable
               value: "true"
             - name: vip_leaderelection
@@ -41,15 +56,10 @@ spec:
               value: "2"
             - name: lb_enable
               value: "true"
-            - name: vip_interface
-              value: {{ hostvars[inventory_hostname]['network_interface'] }}
-              # Add these new env vars
-            - name: k8s_api_enable
-              value: "true"  # Enable explicit API server config
-            - name: k8s_api_server
-              value: "https://127.0.0.1:6443"  # Use local API server
-            - name: k8s_api_insecure
-              value: "true"  # Skip certificate validation if needed
+            - name: KUBERNETES_SERVICE_HOST
+              value: "127.0.0.1"
+            - name: KUBERNETES_SERVICE_PORT
+              value: "6443"
           securityContext:
             capabilities:
               add:
@@ -59,27 +69,17 @@ spec:
             - mountPath: {{ k3s_kubeconfig_file }}
               name: kubeconfig
       hostAliases:
-        - hostnames:
-            - kubernetes
-          ip: 127.0.0.1
+      - hostnames:
+        - kubernetes
+        ip: 127.0.0.1
       hostNetwork: true
       volumes:
         - hostPath:
             path: {{ k3s_kubeconfig_file }}
           name: kubeconfig
       serviceAccountName: kube-vip
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: node-role.kubernetes.io/master
-                    operator: Exists
-              - matchExpressions:
-                  - key: node-role.kubernetes.io/control-plane
-                    operator: Exists
       tolerations:
-        - effect: NoSchedule
-          operator: Exists
-        - effect: NoExecute
-          operator: Exists
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists

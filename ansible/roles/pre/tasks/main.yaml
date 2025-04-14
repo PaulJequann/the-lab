@@ -34,6 +34,25 @@
 - name: Populate service facts
   ansible.builtin.service_facts:
 
+- name: Install pip3.9
+  ansible.builtin.yum:
+    name: python3-pip
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Check Python kubernetes module
+  ansible.builtin.command:
+    cmd: python3 -c "import kubernetes; print('Module found')"
+  register: kubernetes_module_check
+  ignore_errors: true
+  changed_when: false
+  
+- name: Install Python kubernetes module
+  ansible.builtin.pip:
+    name: kubernetes
+    state: present
+  when: kubernetes_module_check.rc != 0
+
 - name: Allow firewalld exceptions
   # when:
   #   - ansible_facts.services['firewalld'] is defined 

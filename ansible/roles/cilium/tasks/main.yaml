@@ -1,75 +1,100 @@
 ---
 # Block for Helm binary installation on all nodes
-- name: Install Helm binary
-  block:
-    - name: Ensure files directory exists
-      ansible.builtin.file:
-        path: "{{ role_path }}/files"
-        state: directory
-        mode: 0755
-      delegate_to: localhost
-      run_once: true
+# - name: Install Helm binary
+#   block:
+#     - name: Ensure files directory exists
+#       ansible.builtin.file:
+#         path: "{{ role_path }}/files"
+#         state: directory
+#         mode: 0755
+#       delegate_to: localhost
+#       run_once: true
     
-    - name: Download Helm binary
-      ansible.builtin.get_url:
-        url: https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz
-        dest: "/tmp/helm.tar.gz"
-        mode: 0755
-        timeout: 60
-      delegate_to: localhost
-      run_once: true
-      register: helm_binary
+#     - name: Download Helm binary
+#       ansible.builtin.get_url:
+#         url: https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz
+#         dest: "/tmp/helm.tar.gz"
+#         mode: 0755
+#         timeout: 60
+#       delegate_to: localhost
+#       run_once: true
+#       register: helm_binary
     
-    - name: Extract Helm binary locally
-      ansible.builtin.unarchive:
-        src: "/tmp/helm.tar.gz"
-        dest: "/tmp/"
-        remote_src: yes
-      delegate_to: localhost
-      run_once: true
-      when: helm_binary.changed
+#     - name: Extract Helm binary locally
+#       ansible.builtin.unarchive:
+#         src: "/tmp/helm.tar.gz"
+#         dest: "/tmp/"
+#         remote_src: yes
+#       delegate_to: localhost
+#       run_once: true
+#       when: helm_binary.changed
     
-    - name: Copy Helm binary to nodes
-      ansible.builtin.copy:
-        src: "/tmp/linux-amd64/helm"
-        dest: "/usr/local/bin/helm"
-        owner: root
-        group: root
-        mode: 0755
+#     - name: Copy Helm binary to nodes
+#       ansible.builtin.copy:
+#         src: "/tmp/linux-amd64/helm"
+#         dest: "/usr/local/bin/helm"
+#         owner: root
+#         group: root
+#         mode: 0755
     
-    - name: Clean up local Helm installation files
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      with_items:
-        - "/tmp/helm.tar.gz"
-        - "/tmp/linux-amd64"
-      delegate_to: localhost
-      run_once: true
+#     - name: Clean up local Helm installation files
+#       ansible.builtin.file:
+#         path: "{{ item }}"
+#         state: absent
+#       with_items:
+#         - "/tmp/helm.tar.gz"
+#         - "/tmp/linux-amd64"
+#       delegate_to: localhost
+#       run_once: true
     
-    - name: Create Helm config directories
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        mode: 0755
-      loop:
-        - "/root/.config/helm"
-        - "/root/.cache/helm/repository"
-        - "/root/.local/share/helm/plugins"
+#     - name: Create Helm config directories
+#       ansible.builtin.file:
+#         path: "{{ item }}"
+#         state: directory
+#         mode: 0755
+#       loop:
+#         - "/root/.config/helm"
+#         - "/root/.cache/helm/repository"
+#         - "/root/.local/share/helm/plugins"
 
-    - name: Create .bashrc Helm configuration
-      ansible.builtin.blockinfile:
-        path: /root/.bashrc
-        block: |
-          # Helm configuration
-          export KUBECONFIG={{ k3s_kubeconfig_file }}
-        marker: "# {mark} ANSIBLE MANAGED BLOCK - HELM CONFIG"
-        create: yes
-        mode: 0644
+#     - name: Create .bashrc Helm configuration
+#       ansible.builtin.blockinfile:
+#         path: /root/.bashrc
+#         block: |
+#           # Helm configuration
+#           export KUBECONFIG={{ k3s_kubeconfig_file }}
+#         marker: "# {mark} ANSIBLE MANAGED BLOCK - HELM CONFIG"
+#         create: yes
+#         mode: 0644
 
 # Block for Cilium installation (only on first controller)
 - name: Deploy Cilium CNI
   block:
+    - name: Install Kubernetes Gateway API CRDs
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ item }}"
+      loop:
+        - https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/refs/heads/main/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml
+        - https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+      retries: 3
+      delay: 5
+
+    - name: Install Cilium CLI
+      ansible.builtin.shell: |
+        CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+        CLI_ARCH=amd64
+        if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+        curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+        sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+        sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+        rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+      args:
+        executable: /bin/bash
+        creates: /usr/local/bin/cilium
+      register: cilium_cli_install
+      changed_when: cilium_cli_install.rc == 0
+
     - name: Verify Helm is installed and accessible
       ansible.builtin.command:
         cmd: helm version --short
@@ -116,26 +141,26 @@
         PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
         KUBECONFIG: "{{ k3s_kubeconfig_file }}"
     
-    - name: Wait for Cilium CRDs
-      kubernetes.core.k8s_info:
-        kind: CustomResourceDefinition
-        name: "{{ item }}"
-      loop:
-        - ciliuml2announcementpolicies.cilium.io
-        - ciliumloadbalancerippools.cilium.io
-      register: crd_result
-      until: crd_result.resources is defined and crd_result.resources | length > 0
-      retries: 10
-      delay: 15
-      environment:
-        KUBECONFIG: "{{ k3s_kubeconfig_file }}"
+    # - name: Wait for Cilium CRDs
+    #   kubernetes.core.k8s_info:
+    #     kind: CustomResourceDefinition
+    #     name: "{{ item }}"
+    #   loop:
+    #     - ciliuml2announcementpolicies.cilium.io
+    #     - ciliumloadbalancerippools.cilium.io
+    #   register: crd_result
+    #   until: crd_result.resources is defined and crd_result.resources | length > 0
+    #   retries: 10
+    #   delay: 15
+    #   environment:
+    #     KUBECONFIG: "{{ k3s_kubeconfig_file }}"
     
-    - name: Apply Cilium resources
-      kubernetes.core.k8s:
-        template: "{{ item }}"
-      loop:
-        - ciliuml2announcementpolicy.yaml
-        - ciliumloadbalancerippool.yaml
+    # - name: Apply Cilium resources
+    #   kubernetes.core.k8s:
+    #     template: "{{ item }}"
+    #   loop:
+    #     - ciliuml2announcementpolicy.yaml
+    #     - ciliumloadbalancerippool.yaml
   environment:
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     KUBECONFIG: "{{ k3s_kubeconfig_file }}"
