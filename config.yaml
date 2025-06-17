@@ -17,6 +17,7 @@ k3s_kubeconfig_file: "/etc/rancher/k3s/k3s.yaml"
 kube_vip_version: "v0.8.9"
 control_plane_endpoint: "10.0.10.50"
 api_port: "6443"
+kube_vip_loadbalancer_ip_pool: "10.0.10.76-10.0.10.99"
 
 server_group: "controllers"
 agent_group: "workers"

@@ -24,6 +24,10 @@
       include_role:
         name: cilium
 
+    - name: Include ArgoCD role
+      include_role:
+        name: argocd
+
   post_tasks:
     - name: Local configuration
       when: inventory_hostname == groups['controllers'][0]

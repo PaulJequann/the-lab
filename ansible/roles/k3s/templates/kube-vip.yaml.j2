@@ -44,6 +44,8 @@ spec:
               value: "true"
             - name: vip_interface
               value: {{ hostvars[inventory_hostname]['network_interface'] }}
+            - name: svc_enable
+              value: "true"
             - name: cp_enable
               value: "true"
             - name: vip_leaderelection

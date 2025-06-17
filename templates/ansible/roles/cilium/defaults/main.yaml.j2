@@ -22,3 +22,14 @@ cilium_values:
       enabled: {{ hubble_relay_enabled }}
     ui:
       enabled: {{ hubble_ui_enabled }}
+  ingressController:
+    enabled: true
+    loadbalancerMode: shared 
+    default: true
+    service:
+      type: LoadBalancer
+  gatewayAPI:
+    enabled: true
+  loadBalancer:
+    serviceTopology: true  # Only uses nodes running the service
+    algorithm: maglev     # For better session affinity

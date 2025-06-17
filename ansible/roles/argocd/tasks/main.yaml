@@ -1,0 +1,29 @@
+---
+- name: Install ArgoCD
+  block:
+    - name: Create ArgoCD namespace
+      ansible.builtin.k8s: 
+        state: present
+        namespace: argocd
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: argocd
+    
+    - name: Install ArgoCD manifests
+      ansible.builtin.k8s:
+        state: present
+        namespace: argocd
+        src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    
+    - name: Wait for ArgoCD pods to be ready
+      ansible.builtin.k8s_info:
+        kind: Pod
+        namespace: argocd
+      register: argocd_pods
+      until: argocd_pods.resources | selectattr('status.phase', 'equal', 'Running') | list | length == 6
+      retries: 10
+      delay: 5
+  when: inventory_hostname == groups['controllers'][0]
+    
