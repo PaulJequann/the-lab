@@ -1,0 +1,6 @@
+tree cebf20fa836e60b02fe7607ea743bd8c4c4f29d1
+parent f928edd578b849cb452b26480e908091937dec16
+author PJ <paul@pauljequann.com> 1741854941 -0400
+committer PJ <paul@pauljequann.com> 1741854941 -0400
+
+implemented node configuration playbook. removed old playbooks
