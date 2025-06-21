@@ -87,6 +87,22 @@
         state: enabled
         immediate: true
         
+    - name: Add http service to firewalld
+      ansible.builtin.firewalld:
+        service: http
+        zone: public
+        permanent: true
+        state: enabled
+        immediate: true
+
+    - name: Add https service to firewalld
+      ansible.builtin.firewalld:
+        service: https
+        zone: public
+        permanent: true
+        state: enabled
+        immediate: true
+        
     - name: Allow cluster nodes in trusted zone
       ansible.builtin.firewalld:
         source: "{{ item }}"
@@ -192,3 +208,63 @@
           fs.inotify.max_user_watches: 524288
           fs.inotify.max_user_instances: 512
   notify: Reboot
+
+- name: Configure SELinux for Cilium (Pre-Installation)
+  block:
+    - name: Ensure Cilium socket directory exists
+      ansible.builtin.file:
+        path: /var/run/cilium/envoy/sockets
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      become: true
+      
+    - name: Check SELinux status
+      ansible.builtin.command: getenforce
+      register: selinux_status
+      changed_when: false
+      
+    - name: Configure SELinux context for Cilium sockets
+      ansible.builtin.shell: |
+        semanage fcontext -a -t spc_t "/var/run/cilium/envoy/sockets(/.*)?"
+        restorecon -Rv /var/run/cilium/envoy/sockets
+      when: selinux_status.stdout != "Disabled"
+      become: true
+      
+    # Create a basic policy that allows socket communication
+    - name: Create basic SELinux policy for Cilium
+      ansible.builtin.copy:
+        dest: /tmp/cilium-basic.te
+        content: |
+          module cilium-basic 1.0;
+          
+          require {
+            type var_run_t;
+            type spc_t;
+            class sock_file { create unlink write };
+            class unix_stream_socket connectto;
+          }
+          
+          #============= spc_t ==============
+          allow spc_t var_run_t:sock_file { create unlink write };
+          allow spc_t spc_t:unix_stream_socket connectto;
+      when: selinux_status.stdout != "Disabled"
+      become: true
+      
+    - name: Compile and install basic Cilium SELinux policy
+      ansible.builtin.shell: |
+        cd /tmp
+        checkmodule -M -m -o cilium-basic.mod cilium-basic.te
+        semodule_package -o cilium-basic.pp -m cilium-basic.mod
+        semodule -i cilium-basic.pp
+      args:
+        creates: /etc/selinux/targeted/active/modules/400/cilium-basic
+      when: selinux_status.stdout != "Disabled"
+      become: true
+      
+  when: ansible_os_family == "RedHat"
+  tags:
+    - cilium
+    - selinux
+    - pre-install

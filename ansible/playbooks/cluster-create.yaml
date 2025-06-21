@@ -58,7 +58,7 @@
         - name: Write Kubernetes config file to project directory with the correct cluster address
           ansible.builtin.copy:
             content: "{{ kubeconfig_base64.content | b64decode | replace('127.0.0.1', control_plane_endpoint) }}"
-            dest: "{{ playbook_dir }}/../../kubeconfig'"
+            dest: "{{ playbook_dir }}/../../kubeconfig"
             mode: 0600
           delegate_to: localhost
           become: false

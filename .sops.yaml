@@ -5,7 +5,7 @@ creation_rules:
     key_groups:
       - age:
           - age1n5l0gxf0mjdhnpq6v6dx22vj7lctv7xsyz5eyf7ktq8284rlhs3speeycx
-  - path_regex: ansible/.*\.sops\.ya?ml
+  - path_regex: ansible/.*\.sops\.*
     key_groups:
       - age:
           - age1n5l0gxf0mjdhnpq6v6dx22vj7lctv7xsyz5eyf7ktq8284rlhs3speeycx

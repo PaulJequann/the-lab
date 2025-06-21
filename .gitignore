@@ -4,6 +4,9 @@ Thumbs.db
 # k8s
 kubeconfig
 kubeconfig*
+
+config.yaml
+cloudflare-tunnel.json
 # vscode-sops
 .decrypted~*.yaml
 .config.env

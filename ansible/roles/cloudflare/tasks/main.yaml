@@ -1,0 +1,51 @@
+---
+- name: Check if cloudflared CLI is installed
+  ansible.builtin.command: "cloudflared --version"
+  register: cloudflare_cli_check
+  ignore_errors: true
+
+- name: Install Cloudflared
+  block:
+    - name: Add Cloudflare GPG key
+      ansible.builtin.rpm_key:
+        key: https://pkg.cloudflare.com/cloudflare-main.gpg
+        state: present
+
+    - name: Add Cloudflare yum repository
+      ansible.builtin.yum_repository:
+        name: cloudflared
+        description: Cloudflare Tunnel Client Repository
+        baseurl: https://pkg.cloudflare.com/cloudflared/rpm/x86_64/
+        gpgcheck: yes
+        gpgkey: https://pkg.cloudflare.com/cloudflare-main.gpg
+        enabled: yes
+
+    - name: Install cloudflared package
+      ansible.builtin.dnf:
+        name: cloudflared
+        state: present
+        update_cache: yes
+
+    - name: Verify cloudflared installation
+      ansible.builtin.command: cloudflared version
+      register: cloudflared_version
+      changed_when: false
+  when: cloudflare_cli_check is failed
+
+- name: Configure Cloudflare credentials
+  ansible.builtin.copy:
+    dest: /etc/cloudflare/credentials.yaml
+    content: |
+      cloudflare_email: {{ cloudflare_email }}
+      cloudflare_api_token: {{ cloudflare_api_token }}
+  mode: '0600'
+  owner: root
+  group: root
+
+- name: Create Cloudflare tunnel
+  ansible.builtin.command: "cloudflared tunnel create {{ cloudflare_tunnel_name }}"
+  register: tunnel_creation
+
+- name: Output tunnel creation result
+  ansible.builtin.debug:
+    msg: "Tunnel created with ID {{ tunnel_creation.stdout }}"

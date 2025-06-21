@@ -127,6 +127,15 @@
       changed_when: update_repo_result.rc == 0
       environment:
         KUBECONFIG: "{{ k3s_kubeconfig_file }}"
+
+    - name: Delete existing cilium-ingress service
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Service
+        name: cilium-ingress
+        namespace: kube-system
+      when: inventory_hostname == groups['controllers'][0]
     
     - name: Install Cilium
       kubernetes.core.helm:
@@ -140,27 +149,95 @@
       environment:
         PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
         KUBECONFIG: "{{ k3s_kubeconfig_file }}"
+
+    # Add verification steps after installation
+    - name: Wait for Cilium pods to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ cilium_namespace }}"
+        label_selectors:
+          - k8s-app=cilium
+      register: cilium_pods
+      until: cilium_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
+      retries: 10
+      delay: 5
+
+    - name: Verify Cilium Ingress service exists
+      kubernetes.core.k8s_info:
+        kind: Service
+        name: cilium-ingress
+        namespace: "{{ cilium_namespace }}"
+      register: ingress_service
+
+    - name: Create Cilium Ingress service if missing
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: cilium-ingress
+            namespace: "{{ cilium_namespace }}"
+            labels:
+              app.kubernetes.io/name: cilium-ingress
+              app.kubernetes.io/part-of: cilium
+          spec:
+            selector:
+              k8s-app: cilium
+            ports:
+            - name: http
+              port: 80
+              protocol: TCP
+              targetPort: 80
+            - name: https
+              port: 443
+              protocol: TCP
+              targetPort: 443
+            type: LoadBalancer
+      when: 
+        - ingress_service.resources | length == 0
+
+    - name: Wait for Cilium Ingress service to get external IP
+      kubernetes.core.k8s_info:
+        kind: Service
+        name: cilium-ingress
+        namespace: "{{ cilium_namespace }}"
+      register: ingress_service_ip
+      until: ingress_service_ip.resources[0].status.loadBalancer.ingress is defined and ingress_service_ip.resources[0].status.loadBalancer.ingress | length > 0
+      retries: 15
+      delay: 10
+
+    - name: Check if Cilium IngressClass exists
+      k8s_info:
+        api_version: networking.k8s.io/v1
+        kind: IngressClass
+        name: cilium
+      register: cilium_ingress_class
     
-    # - name: Wait for Cilium CRDs
-    #   kubernetes.core.k8s_info:
-    #     kind: CustomResourceDefinition
-    #     name: "{{ item }}"
-    #   loop:
-    #     - ciliuml2announcementpolicies.cilium.io
-    #     - ciliumloadbalancerippools.cilium.io
-    #   register: crd_result
-    #   until: crd_result.resources is defined and crd_result.resources | length > 0
-    #   retries: 10
-    #   delay: 15
-    #   environment:
-    #     KUBECONFIG: "{{ k3s_kubeconfig_file }}"
-    
-    # - name: Apply Cilium resources
-    #   kubernetes.core.k8s:
-    #     template: "{{ item }}"
-    #   loop:
-    #     - ciliuml2announcementpolicy.yaml
-    #     - ciliumloadbalancerippool.yaml
+    - name: Delete Cilium IngressClass if it exists with wrong parameters
+      k8s:
+        state: absent
+        api_version: networking.k8s.io/v1
+        kind: IngressClass
+        name: cilium
+      when: cilium_ingress_class.resources | length > 0
+
+    - name: Create Cilium IngressClass with correct parameters
+      k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: IngressClass
+          metadata:
+            name: cilium
+            annotations:
+              ingressclass.kubernetes.io/is-default-class: "true"
+          spec:
+            controller: cilium.io/ingress-controller
+            parameters:
+              apiGroup: cilium.io
+              kind: CiliumIngressConfig
+              name: cilium-ingress-config
   environment:
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     KUBECONFIG: "{{ k3s_kubeconfig_file }}"

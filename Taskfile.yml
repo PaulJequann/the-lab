@@ -91,5 +91,26 @@ tasks:
   configure:
     desc: Configure repository from env settings
     cmds:
+      - task: render-templates
+      - task: encrypt-secrets
+
+  render-templates:
+    desc: Render templates for Ansible and Terraform
+    cmds:
       - makejinja --input ./templates/ansible/ --output {{.ANSIBLE_DIR}}
       - makejinja --input ./templates/terraform/ --output {{.TERRAFORM_DIR}}/
+
+  encrypt-secrets:
+    cmds:
+      - for: { var: SECRET_FILES }
+        cmd: |
+          if sops filestatus "{{.ITEM}}" | jq --exit-status ".encrypted == false" &>/dev/null; then
+                sops --encrypt --in-place "{{.ITEM}}"
+          fi
+    vars:
+      SECRET_FILES:
+        sh: find "{{.ANSIBLE_DIR}}" "{{.TERRAFORM_DIR}}" "{{.KUBERNETES_DIR}}" -type f -name "*.sops.*" -print
+    preconditions:
+      - test -f {{.SOPS_AGE_KEY_FILE}}
+      - test -f {{.ROOT_DIR}}/.sops.yaml
+      - which jq sops

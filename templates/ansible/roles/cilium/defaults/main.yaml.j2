@@ -14,7 +14,7 @@ cilium_values:
       clusterPoolIPv4PodCIDRList: 
       - {{ cluster_cidr }}
   l2announcements:
-    enabled: true
+    enabled: false
   k8sServiceHost: {{ control_plane_endpoint }}
   k8sServicePort: {{ api_port }}
   hubble:

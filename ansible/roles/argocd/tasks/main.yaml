@@ -22,8 +22,86 @@
         kind: Pod
         namespace: argocd
       register: argocd_pods
-      until: argocd_pods.resources | selectattr('status.phase', 'equal', 'Running') | list | length == 6
+      until: argocd_pods.resources | selectattr('status.phase', '==', 'Running') | list | length == 7
       retries: 10
       delay: 5
-  when: inventory_hostname == groups['controllers'][0]
     
+    - name: Apply ArgoCD Ingress
+      ansible.builtin.k8s:
+        state: present
+        namespace: argocd
+        definition: "{{ lookup('template', 'argocd-ingress.yaml.j2') | from_yaml }}"
+
+    # - name: Configure ArgoCD insecure mode
+    #   ansible.builtin.k8s:
+    #     state: present
+    #     namespace: argocd
+    #     definition:
+    #       apiVersion: v1
+    #       kind: ConfigMap
+    #       metadata:
+    #         name: argocd-cm
+    #       data:
+    #         insecure: "{{ argocd_insecure | bool | string }}"
+    
+    # First, get the current ConfigMap to check if we need to make changes
+    - name: Get current ArgoCD command params ConfigMap
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: ConfigMap
+        name: argocd-cmd-params-cm
+        namespace: argocd
+      register: argocd_cmd_params
+      when: 
+        - argocd_insecure is defined
+
+    # Determine if we need to make changes
+    - name: Set fact for ConfigMap change needed
+      set_fact:
+        insecure_mode_change_needed: >-
+          {{ 
+            argocd_insecure | bool and 
+            (
+              argocd_cmd_params.resources | length == 0 or 
+              argocd_cmd_params.resources[0].data is not defined or
+              argocd_cmd_params.resources[0].data['server.insecure'] is not defined or
+              argocd_cmd_params.resources[0].data['server.insecure'] != 'true'
+            )
+          }}
+      when: 
+        - argocd_insecure is defined
+
+    # Apply the ConfigMap changes if needed
+    - name: Configure ArgoCD to accept HTTP (insecure mode)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: argocd-cmd-params-cm
+            namespace: argocd
+            labels:
+              app.kubernetes.io/name: argocd-cmd-params-cm
+              app.kubernetes.io/part-of: argocd
+          data:
+            server.insecure: "true"
+      when: 
+        - argocd_insecure is defined
+        - argocd_insecure | bool
+      register: config_map_result
+
+    # Restart only if changes were made
+    - name: Restart ArgoCD server to apply changes
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        namespace: argocd
+        label_selectors:
+          - app.kubernetes.io/name=argocd-server
+      when: 
+        - argocd_insecure is defined
+        - argocd_insecure | bool
+        - insecure_mode_change_needed | bool or config_map_result.changed
+  when: inventory_hostname == groups['controllers'][0]
