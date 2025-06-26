@@ -12,21 +12,25 @@
       setup:
 
   tasks:
-    - name: Include pre-configuration role
-      include_role:
-        name: pre
+    # - name: Include pre-configuration role
+    #   include_role:
+    #     name: pre
     
-    - name: Include K3s role for control plane nodes
-      include_role:
-        name: k3s
+    # - name: Include K3s role for control plane nodes
+    #   include_role:
+    #     name: k3s
         
-    - name: Include Cilium role
-      include_role:
-        name: cilium
+    # - name: Include Cilium role
+    #   include_role:
+    #     name: cilium
 
-    - name: Include ArgoCD role
+    # - name: Include ArgoCD role
+    #   include_role:
+    #     name: argocd
+
+    - name: Include Cloudflare role
       include_role:
-        name: argocd
+        name: cloudflare
 
   post_tasks:
     - name: Local configuration

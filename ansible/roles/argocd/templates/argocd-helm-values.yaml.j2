@@ -1,0 +1,17 @@
+global:
+  domain: {{ argocd_domain }}
+configs:
+  cm:
+    create: true
+    admin.enabled: true
+  params:
+    create: true
+    server:
+      extraArgs:
+        - --insecure
+  secret:
+    create: true
+    # -- Bcrypt hashed admin password
+    ## Argo expects the password in the secret to be bcrypt hashed. You can create this hash with
+    ## `htpasswd -nbBC 10 "" $ARGO_PWD | tr -d ':\n' | sed 's/$2y/$2a/'`
+    argocdServerAdminPassword: {{ argocd_admin_password | password_hash('sha256') }}

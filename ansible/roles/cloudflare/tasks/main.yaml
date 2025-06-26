@@ -1,51 +1,70 @@
 ---
-- name: Check if cloudflared CLI is installed
-  ansible.builtin.command: "cloudflared --version"
-  register: cloudflare_cli_check
-  ignore_errors: true
-
-- name: Install Cloudflared
+- name: Install Cloudflare
+  when: inventory_hostname == groups['controllers'][0]
   block:
-    - name: Add Cloudflare GPG key
-      ansible.builtin.rpm_key:
-        key: https://pkg.cloudflare.com/cloudflare-main.gpg
+    - name: Load Cloudflare variables
+      community.sops.load_vars:
+        file: "{{ role_path }}/files/cloudflare-tunnel.sops.json"
+
+    - name: Create Cloudflare namespace
+      ansible.builtin.k8s:
         state: present
+        namespace: cloudflare
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: cloudflare
+        wait: yes
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 30
 
-    - name: Add Cloudflare yum repository
-      ansible.builtin.yum_repository:
-        name: cloudflared
-        description: Cloudflare Tunnel Client Repository
-        baseurl: https://pkg.cloudflare.com/cloudflared/rpm/x86_64/
-        gpgcheck: yes
-        gpgkey: https://pkg.cloudflare.com/cloudflare-main.gpg
-        enabled: yes
-
-    - name: Install cloudflared package
-      ansible.builtin.dnf:
-        name: cloudflared
+    - name: Create Cloudflare API token secret
+      ansible.builtin.k8s:
         state: present
-        update_cache: yes
+        namespace: cloudflare
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: cloudflare-api-token
+            labels:
+              app.kubernetes.io/name: cloudflare-api-token
+              app.kubernetes.io/part-of: cloudflare
+          type: Opaque
+          stringData:
+            account-tag: "{{ AccountTag }}"
+            tunnel-secret: "{{ TunnelSecret }}"
+            tunnel-id: "{{ TunnelID }}"
+            tunnel-endpoint: "{{ Endpoint }}"
 
-    - name: Verify cloudflared installation
-      ansible.builtin.command: cloudflared version
-      register: cloudflared_version
-      changed_when: false
-  when: cloudflare_cli_check is failed
-
-- name: Configure Cloudflare credentials
-  ansible.builtin.copy:
-    dest: /etc/cloudflare/credentials.yaml
-    content: |
-      cloudflare_email: {{ cloudflare_email }}
-      cloudflare_api_token: {{ cloudflare_api_token }}
-  mode: '0600'
-  owner: root
-  group: root
-
-- name: Create Cloudflare tunnel
-  ansible.builtin.command: "cloudflared tunnel create {{ cloudflare_tunnel_name }}"
-  register: tunnel_creation
-
-- name: Output tunnel creation result
-  ansible.builtin.debug:
-    msg: "Tunnel created with ID {{ tunnel_creation.stdout }}"
+    - name: Add Cloudflare helm repo
+      kubernetes.core.helm_repository:
+        name: cloudflare
+        repo_url: https://cloudflare.github.io/helm-charts
+      register: add_repo_result
+      changed_when: add_repo_result.rc == 0
+    
+    - name: Install Cloudflare helm chart
+      kubernetes.core.helm:
+        name: cloudflare
+        chart_ref: cloudflare/cloudflare
+        chart_repo_url: https://cloudflare.github.io/helm-charts
+        release_namespace: cloudflare
+        values:
+          cloudflare:
+            tunnelName: "{{ cloudflare_tunnel_name }}"
+            tunnelId: "{{ TunnelID }}"
+            secret: "{{ TunnelSecret }}"
+            ingress:
+              - hostname: "tunnel.{{ cloudflare_domain }}"
+                service: http://web-service:80
+              
+              - hostname: "hello.{{ cloudflare_domain }}"
+                service: hello_world
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi

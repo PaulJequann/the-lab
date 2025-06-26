@@ -1,21 +1,52 @@
 ---
 - name: Install ArgoCD
   block:
-    - name: Create ArgoCD namespace
-      ansible.builtin.k8s: 
-        state: present
-        namespace: argocd
-        definition:
-          apiVersion: v1
-          kind: Namespace
-          metadata:
-            name: argocd
+    # - name: Create ArgoCD namespace
+    #   ansible.builtin.k8s: 
+    #     state: present
+    #     namespace: argocd
+    #     definition:
+    #       apiVersion: v1
+    #       kind: Namespace
+    #       metadata:
+    #         name: argocd
     
-    - name: Install ArgoCD manifests
-      ansible.builtin.k8s:
+    # - name: Install ArgoCD manifests
+    #   ansible.builtin.k8s:
+    #     state: present
+    #     namespace: argocd
+    #     src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+    - name: Add Argo Helm repository
+      community.kubernetes.helm_repository:
+        name: argo
+        repo_url: https://argoproj.github.io/argo-helm
         state: present
+
+    - name: Check if ArgoCD is already installed
+      community.kubernetes.helm_info:
+        name: argocd
         namespace: argocd
-        src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+      register: argocd_helm_info
+      ignore_errors: yes
+
+    - name: Install ArgoCD using Helm
+      community.kubernetes.helm:
+        name: argocd
+        chart_ref: argo/argo-cd
+        chart_version: 5.41.3
+        namespace: argocd
+        create_namespace: true
+        values:
+          server:
+            service:
+              type: ClusterIP
+          configs:
+            cm:
+              application.instanceLabelKey: app.kubernetes.io/instance
+        wait: yes
+        wait_timeout: 300
+      when: argocd_helm_info.failed
     
     - name: Wait for ArgoCD pods to be ready
       ansible.builtin.k8s_info:
