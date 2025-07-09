@@ -40,19 +40,62 @@
     state: present
   when: ansible_os_family == 'RedHat'
 
-- name: Check Python kubernetes module
-  ansible.builtin.command:
-    cmd: python3 -c "import kubernetes; print('Module found')"
-  register: kubernetes_module_check
-  ignore_errors: true
-  changed_when: false
-  
-- name: Install Python kubernetes module
-  ansible.builtin.pip:
-    name: kubernetes
+- name: Install bcrypt dependencies
+  ansible.builtin.yum:
+    name:
+      - python3-devel
+      - gcc
+      - libffi-devel
     state: present
-  when: kubernetes_module_check.rc != 0
+  when: ansible_os_family == 'RedHat'
 
+- name: Ensure required Python modules are installed
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - passlib
+      - bcrypt
+    state: present
+
+# - name: Check Python kubernetes module
+#   ansible.builtin.command:
+#     cmd: python3 -c "import kubernetes; print('Module found')"
+#   register: kubernetes_module_check
+#   ignore_errors: true
+#   changed_when: false
+  
+# - name: Install Python kubernetes module
+#   ansible.builtin.pip:
+#     name: kubernetes
+#     state: present
+#   when: kubernetes_module_check.rc != 0
+
+# - name: Check Python passlib module
+#   ansible.builtin.command:
+#     cmd: python3 -c "import passlib; print('Module found')"
+#   register: passlib_module_check
+#   ignore_errors: true
+#   changed_when: false
+  
+# - name: Install Python passlib module
+#   ansible.builtin.pip:
+#     name: passlib
+#     state: present
+#   when: passlib_module_check.rc != 0
+
+# - name: Check Python bcrypt module
+#   ansible.builtin.command:
+#     cmd: python3 -c "import bcrypt; print('Module found')"
+#   register: bcrypt_module_check
+#   ignore_errors: true
+#   changed_when: false
+  
+# - name: Install Python bcrypt module
+#   ansible.builtin.pip:
+#     name: bcrypt
+#     state: present
+#   when: bcrypt_module_check.rc != 0
+  
 - name: Allow firewalld exceptions
   # when:
   #   - ansible_facts.services['firewalld'] is defined 
@@ -219,39 +262,54 @@
         owner: root
         group: root
       become: true
-      
+
     - name: Check SELinux status
       ansible.builtin.command: getenforce
       register: selinux_status
       changed_when: false
-      
+
+    - name: Check if SELinux fcontext for Cilium sockets is already set
+      ansible.builtin.command: semanage fcontext -l | grep -w "/var/run/cilium/envoy/sockets"
+      register: selinux_fcontext_check
+      failed_when: false
+      changed_when: false
+      become: true
+      when: selinux_status.stdout != "Disabled"
+
     - name: Configure SELinux context for Cilium sockets
       ansible.builtin.shell: |
         semanage fcontext -a -t spc_t "/var/run/cilium/envoy/sockets(/.*)?"
         restorecon -Rv /var/run/cilium/envoy/sockets
-      when: selinux_status.stdout != "Disabled"
+      when: selinux_status.stdout != "Disabled" and selinux_fcontext_check.rc != 0
       become: true
-      
-    # Create a basic policy that allows socket communication
+
+    - name: Check if Cilium SELinux module is already installed
+      ansible.builtin.command: semodule -l | grep cilium-basic
+      register: selinux_module_check
+      failed_when: false
+      changed_when: false
+      become: true
+      when: selinux_status.stdout != "Disabled"
+
     - name: Create basic SELinux policy for Cilium
       ansible.builtin.copy:
         dest: /tmp/cilium-basic.te
         content: |
           module cilium-basic 1.0;
-          
+
           require {
             type var_run_t;
             type spc_t;
             class sock_file { create unlink write };
             class unix_stream_socket connectto;
           }
-          
+
           #============= spc_t ==============
           allow spc_t var_run_t:sock_file { create unlink write };
           allow spc_t spc_t:unix_stream_socket connectto;
-      when: selinux_status.stdout != "Disabled"
+      when: selinux_status.stdout != "Disabled" and selinux_module_check.rc != 1
       become: true
-      
+
     - name: Compile and install basic Cilium SELinux policy
       ansible.builtin.shell: |
         cd /tmp
@@ -259,12 +317,66 @@
         semodule_package -o cilium-basic.pp -m cilium-basic.mod
         semodule -i cilium-basic.pp
       args:
-        creates: /etc/selinux/targeted/active/modules/400/cilium-basic
-      when: selinux_status.stdout != "Disabled"
+        creates: /etc/selinux/targeted/active/modules/400/cilium-basic.pp
+      when: selinux_status.stdout != "Disabled" and selinux_module_check.rc != 0
       become: true
+
+# - name: Configure SELinux for Cilium (Pre-Installation)
+#   block:
+#     - name: Ensure Cilium socket directory exists
+#       ansible.builtin.file:
+#         path: /var/run/cilium/envoy/sockets
+#         state: directory
+#         mode: '0755'
+#         owner: root
+#         group: root
+#       become: true
       
-  when: ansible_os_family == "RedHat"
-  tags:
-    - cilium
-    - selinux
-    - pre-install
+#     - name: Check SELinux status
+#       ansible.builtin.command: getenforce
+#       register: selinux_status
+#       changed_when: false
+      
+#     - name: Configure SELinux context for Cilium sockets
+#       ansible.builtin.shell: |
+#         semanage fcontext -a -t spc_t "/var/run/cilium/envoy/sockets(/.*)?"
+#         restorecon -Rv /var/run/cilium/envoy/sockets
+#       when: selinux_status.stdout != "Disabled"
+#       become: true
+      
+#     # Create a basic policy that allows socket communication
+#     - name: Create basic SELinux policy for Cilium
+#       ansible.builtin.copy:
+#         dest: /tmp/cilium-basic.te
+#         content: |
+#           module cilium-basic 1.0;
+          
+#           require {
+#             type var_run_t;
+#             type spc_t;
+#             class sock_file { create unlink write };
+#             class unix_stream_socket connectto;
+#           }
+          
+#           #============= spc_t ==============
+#           allow spc_t var_run_t:sock_file { create unlink write };
+#           allow spc_t spc_t:unix_stream_socket connectto;
+#       when: selinux_status.stdout != "Disabled"
+#       become: true
+      
+#     - name: Compile and install basic Cilium SELinux policy
+#       ansible.builtin.shell: |
+#         cd /tmp
+#         checkmodule -M -m -o cilium-basic.mod cilium-basic.te
+#         semodule_package -o cilium-basic.pp -m cilium-basic.mod
+#         semodule -i cilium-basic.pp
+#       args:
+#         creates: /etc/selinux/targeted/active/modules/400/cilium-basic
+#       when: selinux_status.stdout != "Disabled"
+#       become: true
+      
+#   when: ansible_os_family == "RedHat"
+#   tags:
+#     - cilium
+#     - selinux
+#     - pre-install

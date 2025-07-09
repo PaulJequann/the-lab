@@ -1,79 +1,74 @@
 ---
 - name: Install ArgoCD
   block:
-    # - name: Create ArgoCD namespace
-    #   ansible.builtin.k8s: 
-    #     state: present
-    #     namespace: argocd
-    #     definition:
-    #       apiVersion: v1
-    #       kind: Namespace
-    #       metadata:
-    #         name: argocd
-    
-    # - name: Install ArgoCD manifests
-    #   ansible.builtin.k8s:
-    #     state: present
-    #     namespace: argocd
-    #     src: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    - name: Load encrypted variables
+      community.sops.load_vars:
+        file: "{{ role_path }}/defaults/main.sops.yaml"
 
     - name: Add Argo Helm repository
-      community.kubernetes.helm_repository:
+      kubernetes.core.helm_repository:
         name: argo
         repo_url: https://argoproj.github.io/argo-helm
         state: present
 
-    - name: Check if ArgoCD is already installed
-      community.kubernetes.helm_info:
+    - name: Check if ArgoCD Helm release exists and is deployed
+      kubernetes.core.helm_info:
         name: argocd
         namespace: argocd
       register: argocd_helm_info
       ignore_errors: yes
 
+    #TODO this is not working, still redeploys ArgoCD
+    - name: Set fact for ArgoCD installation needed
+      set_fact:
+        argocd_install_needed: >-
+          {{ 
+            argocd_helm_info.failed | default(false) or
+            argocd_helm_info.releases is not defined or 
+            argocd_helm_info.releases | length == 0 or 
+            (argocd_helm_info.releases | length > 0 and argocd_helm_info.releases[0].status != 'deployed') or
+            argocd_helm_info.releases[0].chart_version != argocd_chart_version
+          }}
+
     - name: Install ArgoCD using Helm
-      community.kubernetes.helm:
+      kubernetes.core.helm:
         name: argocd
         chart_ref: argo/argo-cd
-        chart_version: 5.41.3
-        namespace: argocd
+        chart_version: "{{ argocd_chart_version }}"
+        namespace: "{{ argocd_namespace }}"
         create_namespace: true
-        values:
-          server:
-            service:
-              type: ClusterIP
-          configs:
-            cm:
-              application.instanceLabelKey: app.kubernetes.io/instance
-        wait: yes
-        wait_timeout: 300
-      when: argocd_helm_info.failed
+        values: "{{ lookup('template', 'argocd-helm-values.yaml.j2') | from_yaml }}"
+      when: argocd_install_needed | bool
     
-    - name: Wait for ArgoCD pods to be ready
+    - name: Wait for ArgoCD server to be ready
       ansible.builtin.k8s_info:
-        kind: Pod
+        api_version: apps/v1
+        kind: Deployment
         namespace: argocd
-      register: argocd_pods
-      until: argocd_pods.resources | selectattr('status.phase', '==', 'Running') | list | length == 7
-      retries: 10
-      delay: 5
+        name: argocd-server
+      register: argocd_server
+      until:
+        - argocd_server.resources is defined
+        - argocd_server.resources | length > 0
+        - argocd_server.resources[0].status.availableReplicas is defined
+        - argocd_server.resources[0].status.availableReplicas > 0
+        - argocd_server.resources[0].status.availableReplicas == argocd_server.resources[0].status.replicas
+      retries: 15
+      delay: 10
+
+    - name: Check for ArgoCD server deployment
+      kubernetes.core.k8s_info:
+        kind: Deployment
+        namespace: argocd
+        name: argocd-server
+      register: argocd_server_deployment
+      failed_when: argocd_server_deployment.resources | length == 0
     
     - name: Apply ArgoCD Ingress
       ansible.builtin.k8s:
         state: present
         namespace: argocd
         definition: "{{ lookup('template', 'argocd-ingress.yaml.j2') | from_yaml }}"
-
-    # - name: Configure ArgoCD insecure mode
-    #   ansible.builtin.k8s:
-    #     state: present
-    #     namespace: argocd
-    #     definition:
-    #       apiVersion: v1
-    #       kind: ConfigMap
-    #       metadata:
-    #         name: argocd-cm
-    #       data:
-    #         insecure: "{{ argocd_insecure | bool | string }}"
     
     # First, get the current ConfigMap to check if we need to make changes
     - name: Get current ArgoCD command params ConfigMap

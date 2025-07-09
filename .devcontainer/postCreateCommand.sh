@@ -36,7 +36,7 @@ fi
 pipx install --force makejinja
 pipx inject --force makejinja attrs
 pipx inject --force ansible-core passlib
-
+pipx inject --force ansible-core bcrypt
 # =====================
 # Cloudflared Installation
 # =====================
