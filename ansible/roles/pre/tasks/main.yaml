@@ -40,12 +40,13 @@
     state: present
   when: ansible_os_family == 'RedHat'
 
-- name: Install bcrypt dependencies
+- name: Install required development tools
   ansible.builtin.yum:
     name:
       - python3-devel
       - gcc
       - libffi-devel
+      - git
     state: present
   when: ansible_os_family == 'RedHat'
 

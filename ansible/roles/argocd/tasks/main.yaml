@@ -1,5 +1,6 @@
 ---
 - name: Install ArgoCD
+  when: inventory_hostname == groups['controllers'][0]
   block:
     - name: Load encrypted variables
       community.sops.load_vars:
@@ -39,6 +40,20 @@
         create_namespace: true
         values: "{{ lookup('template', 'argocd-helm-values.yaml.j2') | from_yaml }}"
       when: argocd_install_needed | bool
+    
+    - name: Create age key secret for helm-secrets
+      when: lookup('env', 'SOPS_AGE_KEY_FILE') | length > 0
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ helm_secrets_age_key_secret_name }}"
+            namespace: "{{ helm_secrets_age_key_secret_namespace }}"
+          type: Opaque
+          data:
+            key.txt: "{{ lookup('file', lookup('env', 'SOPS_AGE_KEY_FILE')) | b64encode }}"
     
     - name: Wait for ArgoCD server to be ready
       ansible.builtin.k8s_info:
@@ -130,4 +145,3 @@
         - argocd_insecure is defined
         - argocd_insecure | bool
         - insecure_mode_change_needed | bool or config_map_result.changed
-  when: inventory_hostname == groups['controllers'][0]

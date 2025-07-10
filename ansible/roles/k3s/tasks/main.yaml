@@ -123,3 +123,48 @@
     state: started
   register: k3s_service
   retries: 5
+
+- name: Check if Helm binary exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: helm_binary_check
+  when: inventory_hostname == groups['controllers'][0]
+
+- name: Install and configure the latest Helm version
+  when:
+    - inventory_hostname == groups['controllers'][0]
+    - not helm_binary_check.stat.exists
+  block:
+    - name: Create a temporary directory for Helm download
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: helm
+      register: temp_helm_dir
+
+    - name: Download and extract the latest Helm
+      ansible.builtin.unarchive:
+        src: "https://get.helm.sh/helm-latest-linux-amd64.tar.gz"
+        dest: "{{ temp_helm_dir.path }}"
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+
+    - name: Move Helm binary to /usr/local/bin
+      ansible.builtin.copy:
+        src: "{{ temp_helm_dir.path }}/helm"
+        dest: /usr/local/bin/helm
+        remote_src: yes
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Clean up temporary directory
+      ansible.builtin.file:
+        path: "{{ temp_helm_dir.path }}"
+        state: absent
+      when: temp_helm_dir.path is defined
+
+- name: Install Helm Secrets plugin
+  kubernetes.core.helm_plugin:
+    plugin_path: https://github.com/jkroepke/helm-secrets
+    state: present
+  when: inventory_hostname == groups['controllers'][0]
