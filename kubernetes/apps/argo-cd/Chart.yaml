@@ -14,7 +14,7 @@ spec:
     targetRevision: 8.1.2
     helm:
       valueFiles:
-        - secrets+age-import-kubernetes://argocd/helm-secrets-private-keys#key.txt?values.sops.yaml
+        - secrets+age-import-kubernetes://argocd/helm-secrets-private-keys#key.txt?secrets.sops.yaml
       releaseName: argocd
   syncPolicy:
     automated:
