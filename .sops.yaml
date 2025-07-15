@@ -1,7 +1,8 @@
 ---
 creation_rules:
   - path_regex: kubernetes/.*\.sops\.ya?ml
-    encrypted_regex: "^(data|stringData)$"
+    #TODO implement cluster-integrated secret management
+    # encrypted_regex: "^(data|stringData)$"
     key_groups:
       - age:
           - age1n5l0gxf0mjdhnpq6v6dx22vj7lctv7xsyz5eyf7ktq8284rlhs3speeycx
