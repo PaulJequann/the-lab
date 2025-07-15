@@ -34,9 +34,8 @@ fi
 
 # Install packages with idempotency checks
 pipx install --force makejinja
+pipx inject --force makejinja bcrypt
 pipx inject --force makejinja attrs
-pipx inject --force ansible-core passlib
-pipx inject --force ansible-core bcrypt
 # =====================
 # Cloudflared Installation
 # =====================

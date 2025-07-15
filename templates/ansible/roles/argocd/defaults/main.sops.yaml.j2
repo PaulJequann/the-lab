@@ -3,6 +3,6 @@ argocd_domain: {{ argocd_domain}}
 argocd_chart_version: {{ argocd_chart_version }}
 argocd_namespace: {{ argocd_namespace | default('argocd') }}
 argocd_insecure: {{ argocd_insecure | default(false) }}
-argocd_admin_password: {{ argocd_admin_password | default('admin') }}
+argocd_admin_password: {{ argocd_admin_password | default('admin') | bcrypt_password }}
 helm_secrets_age_key_secret_name: {{ helm_secrets_age_key_secret_name | default('helm-secrets-private-keys') }}
 helm_secrets_age_key_secret_namespace: {{ helm_secrets_age_key_secret_namespace | default('argocd') }}

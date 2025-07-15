@@ -97,8 +97,10 @@ tasks:
   render-templates:
     desc: Render templates for Ansible and Terraform
     cmds:
+      
       - makejinja --input ./templates/ansible/ --output {{.ANSIBLE_DIR}}
       - makejinja --input ./templates/terraform/ --output {{.TERRAFORM_DIR}}/
+      - makejinja --input ./templates/kubernetes/ --output {{.KUBERNETES_DIR}}
 
   encrypt-secrets:
     cmds:

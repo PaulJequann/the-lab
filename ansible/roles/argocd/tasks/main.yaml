@@ -131,6 +131,12 @@
         - argocd_insecure is defined
         - argocd_insecure | bool
       register: config_map_result
+    
+    - name: Apply ArgoCD Root Application
+      kubernetes.core.k8s:
+        state: present
+        namespace: "{{ argocd_namespace }}"
+        definition: "{{ lookup('template', playbook_dir + '/../../kubernetes/apps/root-app.yaml') | from_yaml }}"
 
     # Restart only if changes were made
     - name: Restart ArgoCD server to apply changes

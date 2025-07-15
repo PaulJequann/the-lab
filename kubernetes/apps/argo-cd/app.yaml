@@ -9,12 +9,12 @@ spec:
     server: https://kubernetes.default.svc
     namespace: argocd
   source:
-    repoURL: https://github.com/your-org/your-repo.git
-    targetRevision: main
-    path: apps/argocd
+    repoURL: https://github.com/PaulJequann/the-lab
+    targetRevision: the-lab-v2
+    path: kubernetes/apps/argo-cd
     helm:
       valueFiles:
-        - values.yaml
+        - secrets+age-import-kubernetes://{{ helm_secrets_age_key_secret_namespace }}/{{ helm_secrets_age_key_secret_name }}#{{ helm_secrets_age_key_name }}?values.sops.yaml
       releaseName: argocd
   syncPolicy:
     automated:

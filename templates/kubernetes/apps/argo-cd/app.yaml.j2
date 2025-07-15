@@ -14,7 +14,7 @@ spec:
     path: {{ argocd_repo_path }}
     helm:
       valueFiles:
-        - values.sops.yaml
+        - {{ helm_secrets_path }}
       releaseName: argocd
   syncPolicy:
     automated:
