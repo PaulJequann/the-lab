@@ -23,3 +23,7 @@ terraform.tfstate*
 .terraform.lock
 .terraform.lock.hcl
 .pkg_manager
+
+# Python
+__pycache__/
+**/__pycache__/

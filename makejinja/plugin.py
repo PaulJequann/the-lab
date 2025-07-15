@@ -1,5 +1,5 @@
 import bcrypt
-from typing import Any
+from typing import Any, Callable
 import makejinja
 
 
@@ -8,6 +8,10 @@ def bcrypt_password(value: str) -> str:
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(value.encode('utf-8'), salt)
     return hashed.decode('utf-8')
+
+
+def build_helm_secrets_path(ns: str, secret: str, key: str) -> str:
+    return f"secrets+age-import-kubernetes://{ns}/{secret}#{key}?values.sops.yaml"
 
 
 class Plugin(makejinja.plugin.Plugin):
@@ -19,3 +23,7 @@ class Plugin(makejinja.plugin.Plugin):
     def filters(self) -> makejinja.plugin.Filters:
         # Only the bcrypt_password filter is registered
         return [bcrypt_password]
+
+    def globals(self) -> list[Callable[..., Any]]:
+        # This method registers functions that can be called directly in templates.
+        return [build_helm_secrets_path]
