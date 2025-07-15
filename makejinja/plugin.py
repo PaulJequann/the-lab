@@ -11,7 +11,7 @@ def bcrypt_password(value: str) -> str:
 
 
 def build_helm_secrets_path(ns: str, secret: str, key: str) -> str:
-    return f"secrets+age-import-kubernetes://{ns}/{secret}#{key}?values.sops.yaml"
+    return f"secrets+age-import-kubernetes://{ns}/{secret}#{key}?secrets.sops.yaml"
 
 
 class Plugin(makejinja.plugin.Plugin):

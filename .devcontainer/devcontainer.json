@@ -19,7 +19,8 @@
     "ghcr.io/devcontainers-extra/features/kubectl-asdf:2": {},
     "ghcr.io/devcontainers-extra/features/pre-commit:2": {},
     "ghcr.io/devcontainers-extra/features/sops:1": {},
-    "ghcr.io/devcontainers-extra/features/yamllint:2": {}
+    "ghcr.io/devcontainers-extra/features/yamllint:2": {},
+    "ghcr.io/devcontainers-extra/features/argo-cd:1": {}
   },
   "mounts": [
     "source=${localEnv:HOME}/.config/sops/age/keys.txt,target=/home/vscode/.config/sops/age/keys.txt,type=bind,consistency=cached,readonly",
