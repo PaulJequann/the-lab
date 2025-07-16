@@ -9,13 +9,13 @@ spec:
     server: https://kubernetes.default.svc
     namespace: argocd
   source:
-    repoURL: https://argoproj.github.io/argo-helm
-    chart: argo-cd
-    targetRevision: 8.1.2
-    helm:
-      valueFiles:
-        - secrets+age-import-kubernetes://argocd/helm-secrets-private-keys#key.txt?secrets.sops.yaml
-      releaseName: argocd
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 8.1.2
+      helm:
+        valueFiles:
+          - secrets+age-import://argocd/helm-secrets-private-keys#key.txt?https://raw.githubusercontent.com/PaulJequann/the-lab/refs/heads/the-lab-v2/kubernetes/apps/argo-cd/secrets.sops.yaml
+        releaseName: argocd
   syncPolicy:
     automated:
       prune: true

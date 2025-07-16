@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: "{{ github_repo_url }}"
     targetRevision: "{{ github_repo_branch }}"
-    path: "{{ argocd_repo_apps_path }}"
+    path: "{{ argocd_managed_git_path }}"
     directory:
       recurse: true
   destination:
