@@ -35,6 +35,8 @@ def build_helm_secrets_path(secret: str, key: str, gh_repo: str, gh_repo_branch:
     # Safely get the user/repo part and remove the optional .git suffix.
     repo_path = parsed_url.path.lstrip('/').removesuffix('.git')
 
+    secret_file_name = secret_file_name.lstrip('/')
+
     raw_url_base = "https://raw.githubusercontent.com"
     secret_url = f"{raw_url_base}/{repo_path}/refs/heads/{gh_repo_branch}/{app_repo_path}/{secret_file_name}"
 
