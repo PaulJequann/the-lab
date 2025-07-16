@@ -1,0 +1,25 @@
+#TODO probably should have one role for all secrets?
+- name: Ensure cert-manager is set up with required secrets
+  when: inventory_hostname == groups['controllers'][0]
+  block:
+
+    - name: Load SOPS-encrypted variables
+      community.sops.load_vars:
+        file: "{{ role_path }}/defaults/main.sops.yaml"
+
+    - name: Ensure cert-manager namespace exists
+      kubernetes.core.k8s:
+        state: present
+        kind: Namespace
+        api_version: v1
+        name: "{{ cert_manager_namespace }}"
+      when: cert_manager_namespace is defined
+
+    - name: Deploy Cloudflare API token secret for cert-manager
+      kubernetes.core.k8s:
+        state: present
+        definition: >-
+          {{ lookup('template', 'cert_manager_cloudflare_secret.yaml.j2') | from_yaml }}
+      when:
+        - cert_manager_namespace is defined
+        - cert_manager_cloudflare_api_secret_name is defined
