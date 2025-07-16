@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: {{ argocd_namespace }}
+spec:
+  project: default
+  source:
+    repoURL: {{ cert_manager_chart_repo }}
+    targetRevision: {{ cert_manager_chart_version }}
+    chart: cert-manager
+    helm:
+      valueFiles:
+        - {{ build_helm_secrets_path(helm_secrets_age_key_secret_name, helm_secrets_age_key_name, github_repo_url, github_repo_branch, cert_manager_app_git_path, 'secrets.values.sops.yaml') }}
+        - {{ build_helm_secrets_path(helm_secrets_age_key_secret_name, helm_secrets_age_key_name, github_repo_url, github_repo_branch, cert_manager_app_git_path, 'secrets.cloudflare.sops.yaml') }}
+      releaseName: cert-manager 
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ cert_manager_namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
