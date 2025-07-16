@@ -37,7 +37,7 @@ def build_helm_secrets_path(secret: str, key: str, gh_repo: str, gh_repo_branch:
     raw_url_base = "https://raw.githubusercontent.com"
     secret_url = f"{raw_url_base}/{repo_path}/refs/heads/{gh_repo_branch}/{app_repo_path}/secrets.sops.yaml"
 
-    return f"secrets+age-import://{secret}/{key}?{secret_url}"
+    return f"secrets+age-import:///{secret}/{key}?{secret_url}"
 
 
 class Plugin(makejinja.plugin.Plugin):
