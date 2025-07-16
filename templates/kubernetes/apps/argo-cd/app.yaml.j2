@@ -9,13 +9,13 @@ spec:
     server: https://kubernetes.default.svc
     namespace: {{ argocd_namespace | default('argocd') }}
   source:
-    - repoURL: {{ argocd_chart_repo }}
-      chart: argo-cd
-      targetRevision: {{ argocd_chart_version }}
-      helm:
-        valueFiles:
-          - {{ build_helm_secrets_path(helm_secrets_age_key_secret_namespace, helm_secrets_age_key_secret_name, helm_secrets_age_key_name, github_repo_url, github_repo_branch, argocd_app_git_path) }}
-        releaseName: argocd
+    repoURL: {{ argocd_chart_repo }}
+    chart: argo-cd
+    targetRevision: {{ argocd_chart_version }}
+    helm:
+      valueFiles:
+        - {{ build_helm_secrets_path(helm_secrets_age_key_secret_namespace, helm_secrets_age_key_secret_name, helm_secrets_age_key_name, github_repo_url, github_repo_branch, argocd_app_git_path) }}
+      releaseName: argocd
   syncPolicy:
     automated:
       prune: true
