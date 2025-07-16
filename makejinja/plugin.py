@@ -11,12 +11,11 @@ def bcrypt_password(value: str) -> str:
     return hashed.decode('utf-8')
 
 
-def build_helm_secrets_path(ns: str, secret: str, key: str, gh_repo: str, gh_repo_branch: str, app_repo_path: str) -> str:
+def build_helm_secrets_path(secret: str, key: str, gh_repo: str, gh_repo_branch: str, app_repo_path: str) -> str:
     """
     Construct the full helm-secrets path for a SOPS secret stored in GitHub.
 
     Args:
-        ns: The Kubernetes namespace of the age key secret.
         secret: The name of the Kubernetes secret holding the age key.
         key: The key within the secret (e.g., 'keys.txt').
         gh_repo: The full HTTPS URL of the GitHub repository.
@@ -38,7 +37,7 @@ def build_helm_secrets_path(ns: str, secret: str, key: str, gh_repo: str, gh_rep
     raw_url_base = "https://raw.githubusercontent.com"
     secret_url = f"{raw_url_base}/{repo_path}/refs/heads/{gh_repo_branch}/{app_repo_path}/secrets.sops.yaml"
 
-    return f"secrets+age-import://{ns}/{secret}#{key}?{secret_url}"
+    return f"secrets+age-import://{secret}/{key}?{secret_url}"
 
 
 class Plugin(makejinja.plugin.Plugin):
