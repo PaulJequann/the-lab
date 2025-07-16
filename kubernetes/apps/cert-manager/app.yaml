@@ -12,10 +12,11 @@ spec:
     targetRevision: v1.16.1
     chart: cert-manager
     helm:
-      values: |
-        crds:
-          enabled: true
-          keep: true
+      parameters:
+        - name: crds.enabled
+          value: "true"
+        - name: crds.keep
+          value: "true"  
       valueFiles:
         - secrets+age-import:///helm-secrets-private-keys/key.txt?https://raw.githubusercontent.com/PaulJequann/the-lab/refs/heads/the-lab-v2/kubernetes/apps/cert-manager/secrets.values.sops.yaml
       releaseName: cert-manager
