@@ -120,3 +120,9 @@ tasks:
     desc: Configure all hosts with basic settings
     cmds:
       - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml -u pj -K -e "ansible_user=pj" {{.CLI_ARGS}}
+
+  get-kubeconfig:
+    desc: Get the kubeconfig file from the k3s cluster
+    dir: "{{.ANSIBLE_DIR}}"
+    cmds:
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/cluster-create.yaml --tags post_run
