@@ -4,7 +4,7 @@ metadata:
   name: cert-manager
   namespace: {{ argocd_namespace }}
   annotations:
-    argocd.argoproj.io/sync-wave: "-10"
+    argocd.argoproj.io/sync-wave: "4"
 spec:
   project: default
   source:
@@ -12,9 +12,6 @@ spec:
     targetRevision: {{ cert_manager_chart_version }}
     chart: cert-manager
     helm:
-      parameters:
-        - name: installCRDs
-          value: "true" 
       valueFiles:
         - {{ build_helm_secrets_path(helm_secrets_age_key_secret_name, helm_secrets_age_key_name, github_repo_url, github_repo_branch, cert_manager_app_git_path, 'secrets.values.sops.yaml') }}
       releaseName: cert-manager

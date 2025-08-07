@@ -1,22 +1,22 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: sealed-secrets
+  name: cert-manager-crds
   namespace: {{ argocd_namespace }}
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   project: default
   source:
-    repoURL: {{ sealed_secrets_chart_repo }}
-    targetRevision: {{ sealed_secrets_chart_version }}
-    chart: sealed-secrets
+    repoURL: {{ github_repo_url }}
+    path: {{ cert_manager_crds_git_path }}
+    targetRevision: {{ github_repo_branch }}
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: kube-system
+    namespace: {{ cert_manager_namespace }}
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
-    syncOptions:
-      - CreateNamespace=true

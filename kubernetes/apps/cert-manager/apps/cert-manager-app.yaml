@@ -4,19 +4,16 @@ metadata:
   name: cert-manager
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-10"
+    argocd.argoproj.io/sync-wave: "4"
 spec:
   project: default
   source:
     repoURL: https://charts.jetstack.io
-    targetRevision: v1.16.1
+    targetRevision: v1.18.2
     chart: cert-manager
     helm:
-      parameters:
-        - name: installCRDs
-          value: "true" 
       valueFiles:
-        - secrets+age-import:///helm-secrets-private-keys/key.txt?https://raw.githubusercontent.com/PaulJequann/the-lab/refs/heads/the-lab-v2/kubernetes/apps/cert-manager/secrets.values.sops.yaml
+        - secrets+age-import:///helm-secrets-private-keys/key.txt?https://raw.githubusercontent.com/PaulJequann/the-lab/refs/heads/the-lab-v2/kubernetes/apps/cert-manager/apps/secrets.values.sops.yaml
       releaseName: cert-manager
   destination:
     server: https://kubernetes.default.svc
