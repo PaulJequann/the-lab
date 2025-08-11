@@ -22,4 +22,4 @@ spec:
   tls:
     - hosts:
         - argocd.local.bysliek.com
-        secretName: argocd-server-tls
+      secretName: argocd-server-tls
