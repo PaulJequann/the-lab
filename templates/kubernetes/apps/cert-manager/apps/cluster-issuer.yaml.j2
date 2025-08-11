@@ -9,9 +9,9 @@ metadata:
 spec:
   acme:
     # stage 
-    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    # server: https://acme-staging-v02.api.letsencrypt.org/directory
     # production
-    # server: {{ cert_manager_acme_server }}
+    server: {{ cert_manager_acme_server }}
     email: {{ cloudflare_email }}
     privateKeySecretRef:
       name: "{{ cert_manager_issuer_name }}-private-key"
