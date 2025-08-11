@@ -12,6 +12,10 @@ spec:
     repoURL: {{ sealed_secrets_chart_repo }}
     targetRevision: {{ sealed_secrets_chart_version }}
     chart: sealed-secrets
+    helm:
+      parameters:
+        - name: fullnameOverride
+          value: sealed-secrets-controller
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
