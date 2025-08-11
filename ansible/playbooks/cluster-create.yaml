@@ -28,9 +28,9 @@
       include_role:
         name: argocd
 
-    - name: Include Cert-Manager role
-      include_role:
-        name: cert-manager
+    # - name: Include Cert-Manager role
+    #   include_role:
+    #     name: cert-manager
 
     # - name: Include Cloudflare role
     #   include_role:
