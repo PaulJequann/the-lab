@@ -13,7 +13,7 @@ spec:
     chart: cert-manager
     helm:
       valueFiles:
-        - secrets+age-import:///helm-secrets-private-keys/key.txt?https://raw.githubusercontent.com/PaulJequann/the-lab/refs/heads/the-lab-v2/kubernetes/apps/cert-manager/apps/secrets.values.sops.yaml
+        - secrets+age-import:///helm-secrets-private-keys/key.txt?https://raw.githubusercontent.com/PaulJequann/the-lab/refs/heads/the-lab-v2/kubernetes/apps/cert-manager/secrets/secrets.values.sops.yaml
       releaseName: cert-manager
   destination:
     server: https://kubernetes.default.svc

@@ -2,6 +2,9 @@ import bcrypt
 from typing import Any, Callable
 from urllib.parse import urlparse
 import makejinja
+import subprocess
+import yaml
+import os
 
 
 def bcrypt_password(value: str) -> str:
@@ -43,6 +46,68 @@ def build_helm_secrets_path(secret: str, key: str, gh_repo: str, gh_repo_branch:
     return f"secrets+age-import:///{secret}/{key}?{secret_url}"
 
 
+def seal_secret(name: str, namespace: str, data: dict[str, str], cert_path: str = ".sealed-secrets-public-cert.pem") -> str:
+    """
+    Generates a SealedSecret manifest by calling the kubeseal CLI.
+
+    Args:
+        name: The name of the Kubernetes Secret.
+        namespace: The namespace for the Secret.
+        data: A dictionary of key-value pairs for the Secret data.
+        cert_path: The path to the Sealed Secrets public certificate.
+
+    Returns:
+        A string containing the YAML for the SealedSecret resource.
+    """
+    if not os.path.exists(cert_path):
+        raise FileNotFoundError(
+            f"Sealed Secrets certificate not found at '{cert_path}'. "
+            "Please run the 'secrets:init' task first."
+        )
+
+    # 1. Construct the plaintext Secret manifest in memory
+    secret_manifest = {
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+        },
+        "type": "Opaque",
+        "stringData": data,  # Use stringData for automatic base64 encoding by Kubernetes
+    }
+    secret_yaml_string = yaml.dump(secret_manifest)
+
+    # 2. Prepare and run the kubeseal command
+    kubeseal_command = [
+        "kubeseal",
+        "--format", "yaml",
+        "--cert", cert_path,
+        # Assuming controller is in kube-system
+        "--controller-namespace", "kube-system",
+    ]
+
+    try:
+        process = subprocess.run(
+            kubeseal_command,
+            input=secret_yaml_string,
+            capture_output=True,
+            text=True,
+            check=True,  # This will raise an exception if kubeseal fails
+        )
+        return process.stdout
+    except FileNotFoundError:
+        raise RuntimeError(
+            "The 'kubeseal' command was not found. Is it installed and in your PATH?")
+    except subprocess.CalledProcessError as e:
+        # Provide more detailed error feedback
+        raise RuntimeError(
+            f"kubeseal command failed with exit code {e.returncode}:\n"
+            f"STDOUT:\n{e.stdout}\n"
+            f"STDERR:\n{e.stderr}"
+        )
+
+
 class Plugin(makejinja.plugin.Plugin):
     def __init__(self, data: dict[str, Any], config: makejinja.config.Config):
         # Store config/data if needed for future extension
@@ -55,4 +120,4 @@ class Plugin(makejinja.plugin.Plugin):
 
     def globals(self) -> list[Callable[..., Any]]:
         # This method registers functions that can be called directly in templates.
-        return [build_helm_secrets_path]
+        return [build_helm_secrets_path, seal_secret]

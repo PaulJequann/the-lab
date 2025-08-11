@@ -39,6 +39,7 @@ fi
 pipx install --force makejinja
 pipx inject --force makejinja bcrypt
 pipx inject --force makejinja attrs
+pipx inject --force makejinja pyyaml
 # =====================
 # Cloudflared Installation
 # =====================

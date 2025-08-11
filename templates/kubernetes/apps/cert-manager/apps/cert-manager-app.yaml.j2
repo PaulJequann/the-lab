@@ -13,7 +13,7 @@ spec:
     chart: cert-manager
     helm:
       valueFiles:
-        - {{ build_helm_secrets_path(helm_secrets_age_key_secret_name, helm_secrets_age_key_name, github_repo_url, github_repo_branch, cert_manager_app_git_path, 'secrets.values.sops.yaml') }}
+        - {{ build_helm_secrets_path(helm_secrets_age_key_secret_name, helm_secrets_age_key_name, github_repo_url, github_repo_branch, cert_manager_secrets_path, 'secrets.values.sops.yaml') }}
       releaseName: cert-manager
   destination:
     server: https://kubernetes.default.svc
