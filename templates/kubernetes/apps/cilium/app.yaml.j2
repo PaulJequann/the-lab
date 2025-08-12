@@ -16,7 +16,6 @@ spec:
     helm:
       releaseName: cilium
       values: |
-        # This is the critical part that enables the Ingress controller
         ingressController:
           enabled: true
           loadbalancerMode: shared
@@ -24,7 +23,6 @@ spec:
           service:
             type: LoadBalancer
 
-        # General Cilium and Hubble settings from your config
         kubeProxyReplacement: "{{ kubeProxyReplacement | lower | string }}"
         hubble:
           relay:
@@ -42,8 +40,6 @@ spec:
         # Point Cilium to the Kubernetes API
         k8sServiceHost: "{{ control_plane_endpoint }}"
         k8sServicePort: {{ api_port }}
-
-        # Advanced settings from your previous configuration
         gatewayAPI:
           enabled: true
         loadBalancer:
