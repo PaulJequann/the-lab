@@ -6,6 +6,7 @@ metadata:
   namespace: argocd
   annotations:
     cert-manager.io/cluster-issuer: "cloudflare-cluster-issuer"
+    ingress.cilium.io/tls-passthrough: "enabled"
 spec:
   ingressClassName: cilium
   rules:
@@ -18,7 +19,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 80
+                  number: 443
   tls:
     - hosts:
         - argocd.local.bysliek.com
