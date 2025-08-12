@@ -1,0 +1,62 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: {{ argocd_namespace }}
+  annotations:
+    # Deploy Cilium very early in the process, before other apps
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  project: default
+  source:
+    repoURL: {{ cilium_repo_url }}
+    chart: cilium
+    targetRevision: {{ cilium_version }}
+    helm:
+      releaseName: cilium
+      values: |
+        # This is the critical part that enables the Ingress controller
+        ingressController:
+          enabled: true
+          loadbalancerMode: shared
+          default: true
+          service:
+            type: LoadBalancer
+
+        # General Cilium and Hubble settings from your config
+        kubeProxyReplacement: "{{ kubeProxyReplacement | lower | string }}"
+        hubble:
+          relay:
+            enabled: {{ hubble_relay_enabled | lower | string }}
+          ui:
+            enabled: {{ hubble_ui_enabled | lower | string }}
+
+        # IPAM and routing settings
+        ipam:
+          mode: "cluster-pool"
+          operator:
+            clusterPoolIPv4PodCIDRList:
+              - "{{ cluster_cidr }}"
+        
+        # Point Cilium to the Kubernetes API
+        k8sServiceHost: "{{ control_plane_endpoint }}"
+        k8sServicePort: {{ api_port }}
+
+        # Advanced settings from your previous configuration
+        gatewayAPI:
+          enabled: true
+        loadBalancer:
+          serviceTopology: true
+          algorithm: maglev
+        operator:
+          replicas: 1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ cilium_namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
