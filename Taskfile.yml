@@ -143,10 +143,10 @@ tasks:
     cmds:
       - |
         VERSION="{{.CERT_MANAGER_VERSION}}"
-        CRD_FILE="{{.KUBERNETES_DIR}}/apps/cert-manager/manifests/cert-manager-crds.yaml"
+        CRD_FILE="{{.KUBERNETES_DIR}}/core/cert-manager/manifests/cert-manager-crds.yaml"
 
         # Create directory if it doesn't exist
-        mkdir -p "{{.KUBERNETES_DIR}}/apps/cert-manager/manifests"
+        mkdir -p "{{.KUBERNETES_DIR}}/core/cert-manager/manifests"
 
         # Check if file exists and get current version
         if [ -f "$CRD_FILE" ]; then
@@ -169,7 +169,7 @@ tasks:
         curl -fsSL "https://github.com/cert-manager/cert-manager/releases/download/${VERSION}/cert-manager.crds.yaml" \
           -o "$CRD_FILE"
 
-        echo "Downloaded cert-manager CRDs to kubernetes/apps/cert-manager/cert-manager-crds.yaml"
+        echo "Downloaded cert-manager CRDs to kubernetes/core/cert-manager/cert-manager-crds.yaml"
     vars:
       CERT_MANAGER_VERSION:
         sh: yq eval '.cert_manager_chart_version' config.yaml
