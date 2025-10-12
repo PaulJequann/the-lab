@@ -1,0 +1,20 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: core
+  namespace: argocd
+spec:
+  description: Core cluster services
+  sourceRepos:
+    - https://github.com/PaulJequann/the-lab
+    - https://argoproj.github.io/argo-helm
+    - https://charts.jetstack.io
+    - https://bitnami-labs.github.io/sealed-secrets
+    - https://helm.cilium.io
+  destinations:
+    - namespace: '*'
+      server: 'https://kubernetes.default.svc'
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'

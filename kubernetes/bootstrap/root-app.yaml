@@ -1,21 +1,22 @@
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cert-manager-crds
+  name: root-app
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-wave: "-10"
 spec:
   project: default
   source:
-    repoURL: https://github.com/PaulJequann/the-lab
-    path: kubernetes/apps/cert-manager/manifests
-    targetRevision: the-lab-v2
+    repoURL: "https://github.com/PaulJequann/the-lab"
+    targetRevision: "the-lab-v2"
+    path: "kubernetes/apps"
     directory:
       recurse: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: cert-manager
+    namespace: "argocd"
   syncPolicy:
     automated:
       prune: true

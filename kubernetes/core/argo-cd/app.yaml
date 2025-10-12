@@ -15,7 +15,7 @@ spec:
     targetRevision: 8.1.2
     helm:
       valueFiles:
-        - secrets+age-import:///helm-secrets-private-keys/key.txt?https://raw.githubusercontent.com/PaulJequann/the-lab/refs/heads/the-lab-v2/kubernetes/apps/argo-cd/secrets.sops.yaml
+        - secrets+age-import:///helm-secrets-private-keys/key.txt?https://raw.githubusercontent.com/PaulJequann/the-lab/refs/heads/the-lab-v2/kubernetes/core/argo-cd/secrets.sops.yaml
       releaseName: argocd
   syncPolicy:
     automated:

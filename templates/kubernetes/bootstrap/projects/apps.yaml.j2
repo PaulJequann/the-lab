@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: apps
+  namespace: argocd
+spec:
+  description: User applications (nginx, whoami, custom apps)
+  
+  sourceRepos:
+    - https://github.com/PaulJequann/the-lab
+    - https://charts.bitnami.com/bitnami
+  
+  destinations:
+    - namespace: 'app-*'  # Only app- prefixed namespaces
+      server: https://kubernetes.default.svc
+  
+  clusterResourceWhitelist: []  # No cluster resources
+  
+  namespaceResourceWhitelist:
+    - group: ''
+      kind: Service
+    - group: ''
+      kind: ConfigMap
+    - group: ''
+      kind: Secret
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+  
+  # Block dangerous configs
+  namespaceResourceBlacklist:
+    - group: ''
+      kind: Pod  # Force use of Deployments

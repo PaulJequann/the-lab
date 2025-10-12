@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: csi-driver-nfs
-  namespace: {{ argocd_namespace | default('argocd') }}
+  namespace: argocd
 spec:
   destination:
     namespace: kube-system
@@ -11,21 +11,21 @@ spec:
   source:
     chart: csi-driver-nfs
     repoURL: https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
-    targetRevision: {{ csi_driver_nfs_version | default('4.9.0') }}
+    targetRevision: 4.9.0
     helm:
       values: |
         externalSnapshotter:
           enabled: true
         controller:
           runOnControlPlane: true
-          replicas: {{ csi_driver_nfs_replica_count | default(2) }}
+          replicas: 2
         storageClass:
           create: true
           name: nfs-csi
           annotations:
             storageclass.kubernetes.io/is-default-class: "true"
           parameters:
-            server: {{ NFS_SERVER }}
-            share: {{ NFS_EXPORT_PATH }}
+            server: 
+            share: 
           reclaimPolicy: Delete
           volumeBindingMode: Immediate
