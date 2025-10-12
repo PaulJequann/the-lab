@@ -1,0 +1,57 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cluster-apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/PaulJequann/the-lab
+        revision: the-lab-v2
+        directories:
+          - path: kubernetes/core/*
+          - path: kubernetes/infrastructure/*
+          - path: kubernetes/apps/*
+          - path: kubernetes/monitoring/*
+  template:
+    metadata:
+      name: '{{.path.basename}}'
+      annotations:
+        argocd.argoproj.io/sync-wave: >-
+          {{- if contains .path.path "core" -}}
+          -5
+          {{- else if contains .path.path "infrastructure" -}}
+          -3
+          {{- else if contains .path.path "monitoring" -}}
+          0
+          {{- else -}}
+          -1
+          {{- end }}
+      labels:
+        category: '{{index .path.segments 1}}'
+    spec:
+      project: '{{index .path.segments 1}}'
+      source:
+        repoURL: https://github.com/PaulJequann/the-lab
+        targetRevision: the-lab-v2
+        path: '{{.path.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jqPathExpressions:
+            - '.spec.template.metadata.annotations."kubectl.kubernetes.io/restartedAt"'

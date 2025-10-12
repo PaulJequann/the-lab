@@ -1,0 +1,63 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cluster-apps
+  namespace: {{ argocd_namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: {{ github_repo_url }}
+        revision: {{ github_repo_branch }}
+        directories:
+          - path: kubernetes/core/*
+          - path: kubernetes/infrastructure/*
+          - path: kubernetes/apps/*
+          - path: kubernetes/monitoring/*
+  template:
+    metadata:
+      name: {% raw %}'{{.path.basename}}'{% endraw %}
+
+      annotations:
+        argocd.argoproj.io/sync-wave: {% raw %}>-
+          {{- if contains .path.path "core" -}}
+          -5
+          {{- else if contains .path.path "infrastructure" -}}
+          -3
+          {{- else if contains .path.path "monitoring" -}}
+          0
+          {{- else -}}
+          -1
+          {{- end }}{% endraw %}
+
+      labels:
+        category: {% raw %}'{{index .path.segments 1}}'{% endraw %}
+
+    spec:
+      project: {% raw %}'{{index .path.segments 1}}'{% endraw %}
+
+      source:
+        repoURL: {{ github_repo_url }}
+        targetRevision: {{ github_repo_branch }}
+        path: {% raw %}'{{.path.path}}'{% endraw %}
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: {% raw %}'{{.path.basename}}'{% endraw %}
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jqPathExpressions:
+            - '.spec.template.metadata.annotations."kubectl.kubernetes.io/restartedAt"'

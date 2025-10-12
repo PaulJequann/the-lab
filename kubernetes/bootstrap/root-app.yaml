@@ -2,16 +2,16 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: argocd-projects
+  name: root-app
   namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "-10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
     repoURL: "https://github.com/PaulJequann/the-lab"
     targetRevision: "the-lab-v2"
-    path: "kubernetes/bootstrap/projects"
+    path: "kubernetes/bootstrap"
     directory:
       recurse: true
   destination:
