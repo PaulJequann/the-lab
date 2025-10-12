@@ -4,6 +4,10 @@ kind: Ingress
 metadata:
   name: argocd-server-ingress
   namespace: argocd
+  annotations:
+    cert-manager.io/cluster-issuer: "cloudflare-cluster-issuer"
+    ingress.cilium.io/tls-passthrough: "enabled"
+    ingress.cilium.io/force-https: "enabled"
 spec:
   ingressClassName: cilium
   rules:
@@ -16,9 +20,8 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 80
-    # Uncomment the following section to enable TLS for ArgoCD
-    #tls:
-      #- hosts:
-          #- {{ argocd_domain }}
-        #secretName: argocd-server-tls
+                  name: https
+  tls:
+    - hosts:
+        - {{ argocd_domain }}
+      secretName: argocd-server-tls

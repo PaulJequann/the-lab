@@ -7,7 +7,7 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: "cloudflare-cluster-issuer"
     ingress.cilium.io/tls-passthrough: "enabled"
-    ingress.cilium.io/force-https: 'enabled' 
+    ingress.cilium.io/force-https: "enabled"
 spec:
   ingressClassName: cilium
   rules:
