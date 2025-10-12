@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root-app
+  name: argocd-projects
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "-10"
@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: "https://github.com/PaulJequann/the-lab"
     targetRevision: "the-lab-v2"
-    path: "kubernetes/apps"
+    path: "kubernetes/bootstrap/projects"
     directory:
       recurse: true
   destination:
