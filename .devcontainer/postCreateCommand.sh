@@ -7,7 +7,6 @@ echo "Running post-create commands..."
 # Configuration Variables
 # =====================
 SOPS_AGE_DIR="${HOME}/.config/sops/age"
-ANSIBLE_VENV_DIR="/usr/local/py-utils/venvs/ansible-core"
 TEMP_DIR="/tmp"
 CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-"
 # Determine repo root for accessing config.yaml reliably
@@ -19,10 +18,22 @@ CONFIG_PATH="${REPO_ROOT}/config.yaml"
 # =====================
 echo "Configuring directories..."
 mkdir -p "${SOPS_AGE_DIR}"
+echo "Created user directories"
 
-# Use $(whoami) for reliable user identification
-CURRENT_USER=$(whoami)
-sudo chown -R "${CURRENT_USER}:${CURRENT_USER}" "${ANSIBLE_VENV_DIR}"
+echo "Directory setup complete"
+
+# =====================
+# AI CLI Tools
+# =====================
+echo "Installing AI CLI tools..."
+
+# Install Claude Code
+if ! command -v claude &> /dev/null; then
+    echo "Installing Claude Code..."
+    npm install -g @anthropic-ai/claude-code
+else
+    echo "Claude Code already installed: $(claude --version 2>/dev/null || echo 'unknown version')"
+fi
 
 # =====================
 # Python Package Management
@@ -36,37 +47,76 @@ if ! command -v pipx &> /dev/null; then
 fi
 
 # Install packages with idempotency checks
-pipx install --force makejinja
-pipx inject --force makejinja bcrypt
-pipx inject --force makejinja attrs
-pipx inject --force makejinja pyyaml
+if ! pipx list | grep -q "package makejinja"; then
+    echo "Installing makejinja..."
+    pipx install makejinja
+    pipx inject makejinja bcrypt attrs pyyaml
+else
+    echo "makejinja already installed"
+fi
+
+# =====================
+# Ansible Collections
+# =====================
+echo "Installing Ansible collections..."
+if ! ansible-galaxy collection list | grep -q "kubernetes.core"; then
+    ansible-galaxy collection install kubernetes.core
+    echo "Installed kubernetes.core version:"
+    ansible-galaxy collection list kubernetes.core
+else
+    echo "kubernetes.core already installed:"
+    ansible-galaxy collection list kubernetes.core
+fi
+
+# =====================
+# Helm Installation & Plugins
+# =====================
+echo "Installing/updating Helm..."
+if ! command -v helm &> /dev/null; then
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+else
+    echo "Helm already installed: $(helm version --short)"
+fi
+
+echo "Installing Helm diff plugin..."
+if ! helm plugin list | grep -q diff; then
+    helm plugin install https://github.com/databus23/helm-diff
+else
+    echo "Helm diff plugin already installed"
+fi
+
 # =====================
 # Cloudflared Installation
 # =====================
 echo "Installing cloudflared..."
 
-# Verify architecture compatibility
-ARCH=$(dpkg --print-architecture)
-VALID_ARCHS=("amd64" "arm64" "armhf")
-if [[ ! " ${VALID_ARCHS[*]} " =~ " ${ARCH} " ]]; then
-    echo "Unsupported architecture: ${ARCH}"
-    exit 1
+if command -v cloudflared &>/dev/null; then
+    echo "cloudflared already installed: $(cloudflared --version 2>&1 | head -n1 || echo 'unknown version')"
+else
+    # Verify architecture compatibility
+    ARCH=$(dpkg --print-architecture)
+    VALID_ARCHS=("amd64" "arm64" "armhf")
+    if [[ ! " ${VALID_ARCHS[*]} " =~ " ${ARCH} " ]]; then
+        echo "Unsupported architecture: ${ARCH}"
+        exit 1
+    fi
+
+    # Download with error handling
+    CLOUDFLARED_DEB="${TEMP_DIR}/cloudflared.deb"
+    trap 'rm -f "${CLOUDFLARED_DEB}"' EXIT  # Ensure cleanup on exit
+
+    if ! curl -Lfs "${CLOUDFLARED_URL}${ARCH}.deb" -o "${CLOUDFLARED_DEB}"; then
+        echo "Cloudflared download failed"
+        exit 1
+    fi
+
+    # Install with verification
+    sudo dpkg -i "${CLOUDFLARED_DEB}" || {
+        echo "Cloudflared installation failed"
+        exit 1
+    }
+    echo "cloudflared installed: $(cloudflared --version 2>&1 | head -n1 || echo 'unknown version')"
 fi
-
-# Download with error handling
-CLOUDFLARED_DEB="${TEMP_DIR}/cloudflared.deb"
-trap 'rm -f "${CLOUDFLARED_DEB}"' EXIT  # Ensure cleanup on exit
-
-if ! curl -Lfs "${CLOUDFLARED_URL}${ARCH}.deb" -o "${CLOUDFLARED_DEB}"; then
-    echo "Cloudflared download failed"
-    exit 1
-fi
-
-# Install with verification
-sudo dpkg -i "${CLOUDFLARED_DEB}" || {
-    echo "Cloudflared installation failed"
-    exit 1
-}
 
 # =====================
 # kubeseal Installation (Debian devcontainer, linux-amd64)
@@ -125,4 +175,19 @@ else
   echo "kubeseal installed: $(kubeseal --version || true)"
 fi
 
-echo "Post-create commands completed successfully!"
+# =====================
+# Summary
+# =====================
+echo ""
+echo "========================================"
+echo "Post-create commands completed!"
+echo "========================================"
+echo ""
+echo "Available tools:"
+echo "  AI:         claude"
+echo "  K8s:        kubectl, helm, kubeseal, argocd, stern, kustomize"
+echo "  Infra:      terraform, ansible, sops, age"
+echo "  Utilities:  cloudflared, prettier, yamllint, pre-commit"
+echo ""
+echo "Run 'claude' to start AI assistant."
+echo "========================================"

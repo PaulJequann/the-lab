@@ -17,7 +17,7 @@
         name: argocd
         namespace: argocd
       register: argocd_helm_info
-      ignore_errors: yes
+      ignore_errors: true
 
     #TODO this is not working, still redeploys ArgoCD
     - name: Set fact for ArgoCD installation needed
@@ -136,7 +136,7 @@
       kubernetes.core.k8s:
         state: present
         namespace: "{{ argocd_namespace }}"
-        definition: "{{ lookup('template', playbook_dir + '/../../kubernetes/apps/root-app.yaml') | from_yaml }}"
+        definition: "{{ lookup('template', playbook_dir + '/../../kubernetes/bootstrap/root-app.yaml') | from_yaml }}"
 
     # Restart only if changes were made
     - name: Restart ArgoCD server to apply changes

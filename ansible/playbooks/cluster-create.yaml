@@ -20,13 +20,13 @@
     #   include_role:
     #     name: k3s
 
-    # - name: Include Cilium role
-    #   include_role:
-    #     name: cilium
-
-    - name: Include ArgoCD role
+    - name: Include Cilium role
       include_role:
-        name: argocd
+        name: cilium
+
+    # - name: Include ArgoCD role
+    #   include_role:
+    #     name: argocd
 
     # - name: Include Cert-Manager role
     #   include_role:
