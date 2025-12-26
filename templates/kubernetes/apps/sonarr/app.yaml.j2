@@ -1,0 +1,82 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sonarr
+  namespace: {{ argocd_namespace | default('argocd') }}
+spec:
+  destination:
+    namespace: {{ media_namespace }}
+    server: https://kubernetes.default.svc
+  project: apps
+  source:
+    chart: {{ sonarr_chart_name }}
+    repoURL: {{ sonarr_chart_repo }}
+    targetRevision: {{ sonarr_chart_version }}
+    helm:
+      releaseName: sonarr
+      values: |
+        controllers:
+          sonarr:
+            containers:
+              app:
+                image:
+                  repository: lscr.io/linuxserver/sonarr
+                  tag: latest
+                env:
+                  TZ: America/New_York
+                  PUID: "1000"
+                  PGID: "1000"
+                probes:
+                  liveness:
+                    enabled: true
+                  readiness:
+                    enabled: true
+                  startup:
+                    enabled: true
+        service:
+          app:
+            controller: sonarr
+            ports:
+              http:
+                port: 8989
+        ingress:
+          app:
+            enabled: true
+            className: cilium
+            annotations:
+              cert-manager.io/cluster-issuer: {{ cert_manager_issuer_name }}
+            hosts:
+              - host: {{ sonarr_domain }}
+                paths:
+                  - path: /
+                    pathType: Prefix
+                    service:
+                      identifier: app
+                      port: http
+            tls:
+              - secretName: sonarr-tls
+                hosts:
+                  - {{ sonarr_domain }}
+        persistence:
+          config:
+            enabled: true
+            type: persistentVolumeClaim
+            storageClass: nfs-csi
+            accessMode: ReadWriteOnce
+            size: 10Gi
+            globalMounts:
+              - path: /config
+          media:
+            enabled: true
+            type: nfs
+            server: 10.0.10.106
+            path: /media
+            globalMounts:
+              - path: /media
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
