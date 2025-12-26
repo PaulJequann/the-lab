@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cilium
+  name: cilium-helm
   namespace: {{ argocd_namespace }}
   annotations:
     # Deploy Cilium very early in the process, before other apps
