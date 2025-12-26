@@ -9,7 +9,7 @@ spec:
   sourceRepos:
     - https://github.com/PaulJequann/the-lab
     - https://charts.bitnami.com/bitnami
-    - https://bjw-s.github.io/helm-charts
+    - https://bjw-s-labs.github.io/helm-charts
   
   destinations:
     - namespace: 'app-*'  # app- prefixed namespaces
