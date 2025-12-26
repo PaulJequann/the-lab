@@ -9,9 +9,12 @@ spec:
   sourceRepos:
     - https://github.com/PaulJequann/the-lab
     - https://charts.bitnami.com/bitnami
+    - https://bjw-s.github.io/helm-charts
   
   destinations:
-    - namespace: 'app-*'  # Only app- prefixed namespaces
+    - namespace: 'app-*'  # app- prefixed namespaces
+      server: https://kubernetes.default.svc
+    - namespace: 'media'  # media namespace for *arr apps
       server: https://kubernetes.default.svc
   
   clusterResourceWhitelist: []  # No cluster resources
@@ -23,6 +26,8 @@ spec:
       kind: ConfigMap
     - group: ''
       kind: Secret
+    - group: ''
+      kind: PersistentVolumeClaim
     - group: apps
       kind: Deployment
     - group: apps
