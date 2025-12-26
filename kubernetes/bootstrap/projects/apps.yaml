@@ -17,7 +17,9 @@ spec:
     - namespace: 'media'  # media namespace for *arr apps
       server: https://kubernetes.default.svc
   
-  clusterResourceWhitelist: []  # No cluster resources
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
   
   namespaceResourceWhitelist:
     - group: ''
