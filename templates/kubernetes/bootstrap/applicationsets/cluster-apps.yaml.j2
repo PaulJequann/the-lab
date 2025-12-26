@@ -43,8 +43,8 @@ spec:
       source:
         repoURL: {{ github_repo_url }}
         targetRevision: {{ github_repo_branch }}
-        path: {% raw %}'{{.path.path}}'{% endraw %}
-        directory:
+        path: {% raw %}'{{.path.path}}'
+{% endraw %}        directory:
           recurse: true
 
       destination:
