@@ -39,8 +39,7 @@ spec:
       source:
         repoURL: https://github.com/PaulJequann/the-lab
         targetRevision: the-lab-v2
-        path: '{{.path.path}}'
-        directory:
+        path: '{{.path.path}}'        directory:
           recurse: true
 
       destination:

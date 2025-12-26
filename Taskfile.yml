@@ -119,8 +119,35 @@ tasks:
     cmds:
       - for: { var: SECRET_FILES }
         cmd: |
-          if ! sops filestatus "{{.ITEM}}" | jq --exit-status ".encrypted" &>/dev/null; then
-            sops --encrypt --in-place "{{.ITEM}}"
+          # Check if file is currently encrypted
+          if sops filestatus "{{.ITEM}}" | jq --exit-status ".encrypted" &>/dev/null; then
+            echo "Skipping {{.ITEM}} - already encrypted"
+          else
+            # File is plaintext - check if we have a backup to compare against
+            BACKUP_FILE="{{.ITEM}}.encrypted.bak"
+            CHECKSUM_FILE="{{.ITEM}}.checksum"
+
+            if [ -f "$BACKUP_FILE" ] && [ -f "$CHECKSUM_FILE" ]; then
+              # Compare checksum of current plaintext with stored checksum
+              CURRENT_CHECKSUM=$(sha256sum "{{.ITEM}}" | awk '{print $1}')
+              STORED_CHECKSUM=$(cat "$CHECKSUM_FILE")
+
+              if [ "$CURRENT_CHECKSUM" = "$STORED_CHECKSUM" ]; then
+                echo "Restoring {{.ITEM}} from backup - content unchanged"
+                cp "$BACKUP_FILE" "{{.ITEM}}"
+              else
+                echo "Encrypting {{.ITEM}} - content changed"
+                sops --encrypt --in-place "{{.ITEM}}"
+                cp "{{.ITEM}}" "$BACKUP_FILE"
+                echo "$CURRENT_CHECKSUM" > "$CHECKSUM_FILE"
+              fi
+            else
+              echo "Encrypting {{.ITEM}} - first time"
+              CURRENT_CHECKSUM=$(sha256sum "{{.ITEM}}" | awk '{print $1}')
+              sops --encrypt --in-place "{{.ITEM}}"
+              cp "{{.ITEM}}" "$BACKUP_FILE"
+              echo "$CURRENT_CHECKSUM" > "$CHECKSUM_FILE"
+            fi
           fi
 
   # encrypt-secrets:
@@ -132,7 +159,7 @@ tasks:
   #         fi
     vars:
       SECRET_FILES:
-        sh: find "{{.ANSIBLE_DIR}}" "{{.TERRAFORM_DIR}}" "{{.KUBERNETES_DIR}}" -type f -name "*.sops.*" -print
+        sh: find "{{.ANSIBLE_DIR}}" "{{.TERRAFORM_DIR}}" "{{.KUBERNETES_DIR}}" -type f -name "*.sops.*" ! -name "*.encrypted.bak" ! -name "*.checksum" -print
     preconditions:
       - test -f {{.SOPS_AGE_KEY_FILE}}
       - test -f {{.ROOT_DIR}}/.sops.yaml
