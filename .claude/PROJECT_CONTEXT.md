@@ -253,3 +253,176 @@ kubectl create secret generic my-secret --dry-run=client -o yaml | \
 - **Current work branch**: `the-lab-v2`
 - **Commit pattern**: Descriptive messages with context
 - **Staging**: Use `git add -A` to catch all changes from template rendering
+
+## NFS Storage Configuration
+
+### NFS Client Requirements
+All Kubernetes nodes must have NFS client utilities installed to mount NFS volumes. Without these packages, pods will fail to mount NFS shares with error: `bad option; for several filesystems (e.g. nfs, cifs) you might need a /sbin/mount.<type> helper program`
+
+**Rocky Linux**: The `nfs-utils` package is required and is installed via the Ansible `pre` role in [ansible/roles/pre/tasks/main.yaml:50](ansible/roles/pre/tasks/main.yaml#L50)
+
+### NFS Mount Types
+
+There are two patterns for mounting NFS storage in pods:
+
+#### 1. CSI Driver with PersistentVolumeClaims (Recommended for Config Data)
+Best for: Application configuration, databases, small frequently-accessed data
+
+**Pattern**:
+```yaml
+persistence:
+  config:
+    enabled: true
+    type: persistentVolumeClaim
+    storageClass: nfs-csi
+    accessMode: ReadWriteOnce
+    size: 10Gi
+```
+
+**Configuration**: NFS CSI driver storage class in [templates/kubernetes/infrastructure/storage/csi-driver-nfs/app.yaml.j2](templates/kubernetes/infrastructure/storage/csi-driver-nfs/app.yaml.j2)
+
+**Mount options**: Uses NFSv3 with `nolock` for TrueNAS compatibility
+
+#### 2. Direct NFS Volume Mounts (Required for Hard-linking)
+Best for: Bulk media storage where hard-linking is needed (Sonarr, Radarr, etc.)
+
+**Pattern**:
+```yaml
+persistence:
+  media:
+    enabled: true
+    type: nfs
+    server: 10.0.10.106  # NFS server IP
+    path: /mnt/media/hoodflix  # Export path
+    globalMounts:
+      - path: /data
+```
+
+**Why**: Hard-linking requires the source and destination to be on the same filesystem. Using direct NFS mounts ensures downloads and library folders share the same mount point, enabling atomic moves instead of copies.
+
+**TrueNAS Configuration**:
+- NFS export must allow writes (maproot=root)
+- Dataset permissions must allow Group/Other write access
+- Export path should be the actual dataset path (e.g., `/mnt/media/hoodflix`, not just `/media`)
+
+### Storage Architecture
+
+**SSD Storage** (`nfs_server: truenas.local.bysliek.com`, `nfs_export_path: /mnt/k8s-ssd-pool/k8s-nfs-share`):
+- Application configs
+- Databases
+- Fast-access data
+- Mounted via NFS CSI driver with PVCs
+
+**HDD Storage** (`10.0.10.106:/mnt/media/hoodflix`):
+- Media files (movies, TV shows)
+- Downloads
+- Bulk storage
+- Mounted directly as NFS volumes for hard-linking support
+
+## Cert-Manager Configuration
+
+### ClusterIssuer Naming Convention
+The actual ClusterIssuer resource is named `cloudflare-cluster-issuer` (not just `cloudflare`).
+
+**Critical**: The `cert_manager_issuer_name` variable in [config.yaml:101](config.yaml#L101) MUST match the actual ClusterIssuer name exactly.
+
+**Current configuration**:
+```yaml
+cert_manager_issuer_name: "cloudflare-cluster-issuer"
+```
+
+**Common error**: If the issuer name doesn't match, certificates will be stuck in "Issuing" state with error:
+```
+Referenced 'ClusterIssuer' not found: clusterissuer.cert-manager.io 'cloudflare' not found
+```
+
+**Verification**:
+```bash
+kubectl get clusterissuer
+# Should show: cloudflare-cluster-issuer
+```
+
+### Ingress TLS Pattern
+All ingresses with TLS should reference the ClusterIssuer via annotation:
+```yaml
+annotations:
+  cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+tls:
+  - secretName: app-tls
+    hosts:
+      - app.local.bysliek.com
+```
+
+## Media Application Deployment Pattern
+
+### Namespace Strategy
+Media applications (Sonarr, Radarr, Prowlarr, etc.) share a common `media` namespace to:
+- Simplify resource management
+- Enable shared network policies
+- Group related services together
+
+### Dual-Storage Configuration
+Media apps typically need two storage mounts:
+
+1. **Config storage** (PVC on SSD NFS):
+   - Application settings
+   - Databases
+   - Small, frequently-accessed files
+
+2. **Media storage** (Direct NFS mount on HDD):
+   - Downloads directory
+   - Library/media files
+   - Large, infrequently-modified files
+   - Enables hard-linking for atomic moves
+
+### Example: Sonarr Configuration
+See [templates/kubernetes/bootstrap/apps/sonarr.yaml.j2](templates/kubernetes/bootstrap/apps/sonarr.yaml.j2) for complete example showing:
+- bjw-s app-template v3.5.1 Helm chart usage
+- Dual NFS mount configuration (PVC + direct mount)
+- Ingress with TLS
+- Service configuration
+
+## Troubleshooting Guide
+
+### Pod Stuck in ContainerCreating (NFS Mount Issues)
+**Symptoms**: Pod events show `MountVolume.SetUp failed` with NFS-related errors
+
+**Check**:
+1. Are NFS client utilities installed on the node?
+   ```bash
+   ansible all -i inventory/hosts.yaml -m shell -a "rpm -q nfs-utils"
+   ```
+2. Is the NFS export accessible?
+   ```bash
+   showmount -e <nfs-server-ip>
+   ```
+3. Are NFS export permissions correct? (maproot, dataset permissions)
+
+**Fix**: Install nfs-utils via Ansible pre role and run playbook
+
+### Certificate Stuck in Issuing State
+**Symptoms**: Certificate remains in "Issuing" state, ingress shows ERR_CONNECTION_RESET
+
+**Check**:
+1. Verify ClusterIssuer exists and is ready:
+   ```bash
+   kubectl get clusterissuer
+   kubectl describe clusterissuer cloudflare-cluster-issuer
+   ```
+2. Check certificate events:
+   ```bash
+   kubectl describe certificate <cert-name> -n <namespace>
+   ```
+3. Verify issuer name in ingress annotation matches actual ClusterIssuer name
+
+**Fix**: Ensure `cert_manager_issuer_name` in config.yaml matches the ClusterIssuer resource name exactly
+
+### ArgoCD Application Out of Sync
+**Symptoms**: Application shows "OutOfSync" status in ArgoCD UI
+
+**Check**:
+1. Did you run `task configure` after editing templates?
+2. Did you commit and push changes?
+3. Are there RBAC/permission issues? (Check ArgoCD project permissions)
+
+**Fix**: Ensure ApplicationSet recurse is enabled and project has proper permissions
