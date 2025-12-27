@@ -25,8 +25,8 @@ spec:
           annotations:
             storageclass.kubernetes.io/is-default-class: "true"
           parameters:
-            server: 
-            share: 
+            server: truenas.local.bysliek.com
+            share: /mnt/k8s-ssd-pool/k8s-nfs-share
           reclaimPolicy: Delete
           volumeBindingMode: Immediate
   syncPolicy:
