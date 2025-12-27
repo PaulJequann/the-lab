@@ -29,3 +29,10 @@ spec:
             share: 
           reclaimPolicy: Delete
           volumeBindingMode: Immediate
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
