@@ -70,13 +70,9 @@ spec:
             enabled: true
             type: nfs
             server: 10.0.10.106
-            path: /media
+            path: /mnt/media/hoodflix
             globalMounts:
-              - path: /media
-            nfs:
-              mountOptions:
-                - nfsvers=3
-                - nolock
+              - path: /data
   syncPolicy:
     automated:
       prune: true
