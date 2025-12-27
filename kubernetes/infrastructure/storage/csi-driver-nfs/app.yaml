@@ -27,6 +27,9 @@ spec:
           parameters:
             server: truenas.local.bysliek.com
             share: /mnt/k8s-ssd-pool/k8s-nfs-share
+          mountOptions:
+            - nfsvers=3
+            - nolock
           reclaimPolicy: Delete
           volumeBindingMode: Immediate
   syncPolicy:

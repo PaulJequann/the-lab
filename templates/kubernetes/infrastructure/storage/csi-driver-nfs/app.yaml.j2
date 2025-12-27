@@ -27,6 +27,9 @@ spec:
           parameters:
             server: {{ nfs_server }}
             share: {{ nfs_export_path }}
+          mountOptions:
+            - nfsvers=3
+            - nolock
           reclaimPolicy: Delete
           volumeBindingMode: Immediate
   syncPolicy:
