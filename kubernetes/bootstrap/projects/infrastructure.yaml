@@ -12,6 +12,7 @@ spec:
     - https://charts.jetstack.io
     - https://bitnami-labs.github.io/sealed-secrets
     - https://helm.cilium.io
+    - https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
   destinations:
     - namespace: '*'
       server: 'https://kubernetes.default.svc'
