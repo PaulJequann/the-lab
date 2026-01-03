@@ -1,17 +1,18 @@
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: sonarr
-  namespace: { { argocd_namespace | default('argocd') } }
+  namespace: {{argocd_namespace | default('argocd')}}
 spec:
   destination:
-    namespace: { { media_namespace } }
+    namespace: {{media_namespace}}
     server: https://kubernetes.default.svc
   project: apps
   source:
-    chart: { { sonarr_chart_name } }
-    repoURL: { { sonarr_chart_repo } }
-    targetRevision: { { sonarr_chart_version } }
+    chart: {{sonarr_chart_name}}
+    repoURL: {{sonarr_chart_repo}}
+    targetRevision: {{sonarr_chart_version}}
     helm:
       releaseName: sonarr
       values: |
