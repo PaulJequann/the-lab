@@ -35,6 +35,16 @@ else
     echo "Claude Code already installed: $(claude --version 2>/dev/null || echo 'unknown version')"
 fi
 
+# Install beads CLI (AI-friendly task tracker)
+# Note: Installation only adds the CLI. Run 'bd init' manually when ready to use beads.
+if ! command -v bd &> /dev/null; then
+    echo "Installing beads..."
+    curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+    echo "beads installed. Run 'bd init' to initialize task tracking."
+else
+    echo "beads already installed: $(bd --version 2>/dev/null || echo 'unknown version')"
+fi
+
 # =====================
 # Python Package Management
 # =====================
@@ -184,7 +194,7 @@ echo "Post-create commands completed!"
 echo "========================================"
 echo ""
 echo "Available tools:"
-echo "  AI:         claude"
+echo "  AI:         claude, bd (beads)"
 echo "  K8s:        kubectl, helm, kubeseal, argocd, stern, kustomize"
 echo "  Infra:      terraform, ansible, sops, age"
 echo "  Utilities:  cloudflared, prettier, yamllint, pre-commit"
