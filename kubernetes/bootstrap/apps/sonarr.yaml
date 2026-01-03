@@ -2,16 +2,16 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: sonarr
-  namespace: argocd
+  namespace: { { argocd_namespace | default('argocd') } }
 spec:
   destination:
-    namespace: media
+    namespace: { { media_namespace } }
     server: https://kubernetes.default.svc
   project: apps
   source:
-    chart: app-template
-    repoURL: https://bjw-s-labs.github.io/helm-charts
-    targetRevision: 3.5.1
+    chart: { { sonarr_chart_name } }
+    repoURL: { { sonarr_chart_repo } }
+    targetRevision: { { sonarr_chart_version } }
     helm:
       releaseName: sonarr
       values: |
@@ -72,7 +72,7 @@ spec:
             server: 10.0.10.106
             path: /mnt/media/hoodflix
             globalMounts:
-              - path: /data
+              - path: /media
   syncPolicy:
     automated:
       prune: true
