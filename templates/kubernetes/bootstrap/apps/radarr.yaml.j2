@@ -2,24 +2,24 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: sonarr
-  namespace: argocd
+  name: radarr
+  namespace: {{argocd_namespace | default('argocd')}}
 spec:
   destination:
-    namespace: media
+    namespace: {{media_namespace}}
     server: https://kubernetes.default.svc
     finalizers:
       - resources-finalizer.argocd.argoproj.io
   project: apps
   source:
-    chart: app-template
-    repoURL: https://bjw-s-labs.github.io/helm-charts
-    targetRevision: 4.5.0
+    chart: {{helmchart_template_name}}
+    repoURL: {{helmchart_template_repo}}
+    targetRevision: {{helmchart_template_version}}
     helm:
-      releaseName: sonarr
+      releaseName: radarr
       values: |
         controllers:
-          sonarr:
+          radarr:
             pod:
               securityContext:
                 fsGroup: 1000
@@ -28,24 +28,24 @@ spec:
             containers:
               app:
                 image:
-                  repository: lscr.io/linuxserver/sonarr
-                  tag: latest
+                  repository: {{ radarr_image_repository }}
+                  tag: {{ radarr_image_tag }}
                 env:
                   TZ: America/New_York
         service:
           app:
-            controller: sonarr
+            controller: radarr
             ports:
               http:
-                port: 8989
+                port: 7878
         ingress:
           app:
             enabled: true
             className: cilium
             annotations:
-              cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+              cert-manager.io/cluster-issuer: {{ cert_manager_issuer_name }}
             hosts:
-              - host: sonarr2.local.bysliek.com
+              - host: {{ radarr_domain }}
                 paths:
                   - path: /
                     pathType: Prefix
@@ -53,9 +53,9 @@ spec:
                       identifier: app
                       port: http
             tls:
-              - secretName: sonarr-tls
+              - secretName: radarr-tls
                 hosts:
-                  - sonarr2.local.bysliek.com
+                  - {{ radarr_domain }}
         persistence:
           config:
             enabled: true
@@ -68,8 +68,8 @@ spec:
           media:
             enabled: true
             type: nfs
-            server: truenas.local.bysliek.com
-            path: /mnt/media/hoodflix
+            server: {{ nfs_server }}
+            path: {{ nfs_media_export_path }}
             globalMounts:
               - path: /media
   syncPolicy:

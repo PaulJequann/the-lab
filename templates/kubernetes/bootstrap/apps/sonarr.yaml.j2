@@ -8,32 +8,30 @@ spec:
   destination:
     namespace: {{media_namespace}}
     server: https://kubernetes.default.svc
+    finalizers:
+      - resources-finalizer.argocd.argoproj.io
   project: apps
   source:
-    chart: {{sonarr_chart_name}}
-    repoURL: {{sonarr_chart_repo}}
-    targetRevision: {{sonarr_chart_version}}
+    chart: {{helmchart_template_name}}
+    repoURL: {{helmchart_template_repo}}
+    targetRevision: {{helmchart_template_version}}
     helm:
       releaseName: sonarr
       values: |
         controllers:
           sonarr:
+            pod:
+              securityContext:
+                fsGroup: 1000
+                runAsUser: 1000
+                runAsGroup: 1000
             containers:
               app:
                 image:
-                  repository: lscr.io/linuxserver/sonarr
-                  tag: latest
+                  repository: {{ sonarr_image_repository }}
+                  tag: {{ sonarr_image_tag }}
                 env:
                   TZ: America/New_York
-                  PUID: "1000"
-                  PGID: "1000"
-                probes:
-                  liveness:
-                    enabled: true
-                  readiness:
-                    enabled: true
-                  startup:
-                    enabled: true
         service:
           app:
             controller: sonarr
@@ -64,20 +62,26 @@ spec:
             type: persistentVolumeClaim
             storageClass: nfs-csi
             accessMode: ReadWriteOnce
-            size: 10Gi
+            size: 2Gi
             globalMounts:
               - path: /config
           media:
             enabled: true
             type: nfs
-            server: 10.0.10.106
-            path: /mnt/media/hoodflix
+            server: {{ nfs_server }}
+            path: {{ nfs_media_export_path }}
             globalMounts:
               - path: /media
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: "5s"
+        factor: 2
+        maxDuration: "3m"
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
