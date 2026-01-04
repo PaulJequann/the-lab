@@ -45,7 +45,7 @@ spec:
             annotations:
               cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
             hosts:
-              - host: overseerr2.local.bysliek.com
+              - host: overseerr.local.bysliek.com
                 paths:
                   - path: /
                     pathType: Prefix
@@ -55,7 +55,7 @@ spec:
             tls:
               - secretName: overseerr-tls
                 hosts:
-                  - overseerr2.local.bysliek.com
+                  - overseerr.local.bysliek.com
         persistence:
           config:
             enabled: true

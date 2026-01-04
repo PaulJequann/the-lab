@@ -45,7 +45,7 @@ spec:
             annotations:
               cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
             hosts:
-              - host: radarr2.local.bysliek.com
+              - host: radarr.local.bysliek.com
                 paths:
                   - path: /
                     pathType: Prefix
@@ -55,7 +55,7 @@ spec:
             tls:
               - secretName: radarr-tls
                 hosts:
-                  - radarr2.local.bysliek.com
+                  - radarr.local.bysliek.com
         persistence:
           config:
             enabled: true
