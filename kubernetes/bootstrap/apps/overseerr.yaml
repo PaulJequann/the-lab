@@ -28,8 +28,8 @@ spec:
             containers:
               app:
                 image:
-                  repository: 
-                  tag: 
+                  repository: ghcr.io/linuxserver/overseerr
+                  tag: latest
                 env:
                   TZ: America/New_York
         service:
@@ -45,7 +45,7 @@ spec:
             annotations:
               cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
             hosts:
-              - host: 
+              - host: overseerr2.local.bysliek.com
                 paths:
                   - path: /
                     pathType: Prefix
@@ -55,7 +55,7 @@ spec:
             tls:
               - secretName: overseerr-tls
                 hosts:
-                  - 
+                  - overseerr2.local.bysliek.com
         persistence:
           config:
             enabled: true
