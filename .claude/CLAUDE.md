@@ -322,24 +322,43 @@ persistence:
 ## Cert-Manager Configuration
 
 ### ClusterIssuer Naming Convention
-The actual ClusterIssuer resource is named `cloudflare-cluster-issuer` (not just `cloudflare`).
+The ClusterIssuer template appends nothing to the variable - it uses it directly.
 
-**Critical**: The `cert_manager_issuer_name` variable in [config.yaml:101](config.yaml#L101) MUST match the actual ClusterIssuer name exactly.
+**Critical**: The `cert_manager_issuer_name` variable MUST contain the **full ClusterIssuer name** (not a prefix).
 
 **Current configuration**:
 ```yaml
 cert_manager_issuer_name: "cloudflare-cluster-issuer"
 ```
 
-**Common error**: If the issuer name doesn't match, certificates will be stuck in "Issuing" state with error:
+**Template usage**:
+```jinja
+# ClusterIssuer manifest
+name: "{{ cert_manager_issuer_name }}"  # Uses variable directly
+
+# Ingress annotations (in app templates)
+cert-manager.io/cluster-issuer: {{ cert_manager_issuer_name }}  # Also uses directly
 ```
-Referenced 'ClusterIssuer' not found: clusterissuer.cert-manager.io 'cloudflare' not found
-```
+
+**Common error**: If the template appends a suffix (e.g., `-cluster-issuer`) when the variable already contains it, you'll get redundant naming like `cloudflare-cluster-issuer-cluster-issuer`.
 
 **Verification**:
 ```bash
 kubectl get clusterissuer
-# Should show: cloudflare-cluster-issuer
+# Should show: cloudflare-cluster-issuer (not cloudflare-cluster-issuer-cluster-issuer)
+```
+
+**Debugging certificate issues**:
+```bash
+# Check certificate status
+kubectl get certificate -n <namespace>
+
+# Check certificate request details
+kubectl get certificaterequest -n <namespace>
+kubectl describe certificaterequest <name> -n <namespace>
+
+# Common error: "Referenced 'ClusterIssuer' not found"
+# Fix: Verify issuer name in ingress annotation matches actual ClusterIssuer name
 ```
 
 ### Ingress TLS Pattern
@@ -356,10 +375,32 @@ tls:
 ## Media Application Deployment Pattern
 
 ### Namespace Strategy
-Media applications (Sonarr, Radarr, Prowlarr, etc.) share a common `media` namespace to:
+Media applications (Sonarr, Radarr, Prowlarr, Overseerr, etc.) share a common `media` namespace to:
 - Simplify resource management
 - Enable shared network policies
 - Group related services together
+
+### Application Port Configuration
+**Critical**: Each media app uses a specific port - configure correctly in templates
+
+| Application | Port | Purpose |
+|------------|------|---------|
+| Sonarr | 8989 | TV show management |
+| Radarr | 7878 | Movie management |
+| Overseerr | 5055 | Media request management |
+| Prowlarr | 9696 | Indexer management |
+
+**Template configuration**:
+```yaml
+service:
+  app:
+    controller: <app-name>
+    ports:
+      http:
+        port: <correct-port>  # Use table above
+```
+
+**Common error**: Using wrong port (e.g., 7878 for Overseerr instead of 5055) will cause connection refused errors. Verify by checking pod logs for "Server ready on port XXXX".
 
 ### Dual-Storage Configuration
 Media apps typically need two storage mounts:
@@ -377,10 +418,10 @@ Media apps typically need two storage mounts:
 
 ### Example: Sonarr Configuration
 See [templates/kubernetes/bootstrap/apps/sonarr.yaml.j2](templates/kubernetes/bootstrap/apps/sonarr.yaml.j2) for complete example showing:
-- bjw-s app-template v3.5.1 Helm chart usage
+- bjw-s app-template v4.5.0 Helm chart usage
 - Dual NFS mount configuration (PVC + direct mount)
 - Ingress with TLS
-- Service configuration
+- Service configuration with correct port (8989)
 
 ## Troubleshooting Guide
 
@@ -426,3 +467,30 @@ See [templates/kubernetes/bootstrap/apps/sonarr.yaml.j2](templates/kubernetes/bo
 3. Are there RBAC/permission issues? (Check ArgoCD project permissions)
 
 **Fix**: Ensure ApplicationSet recurse is enabled and project has proper permissions
+
+### Deployment Selector Field is Immutable
+**Symptoms**: ArgoCD sync fails with error: `Deployment.apps "name" is invalid: spec.selector: Invalid value: field is immutable`
+
+**Cause**: Kubernetes Deployments have an immutable `spec.selector` field. Helm chart upgrades (especially major versions like app-template 3.x → 4.x) often change label selectors.
+
+**Fix**:
+1. Delete the Deployment: `kubectl delete deployment <name> -n <namespace>`
+2. ArgoCD will recreate it with the new chart version and correct selectors
+3. Alternative: Scale to 0 first if you need graceful shutdown
+
+**Prevention**: When upgrading major helm chart versions, expect to recreate Deployments
+
+### PVC Size Changes Not Supported
+**Symptoms**: Want to reduce PVC size but change doesn't apply
+
+**Cause**: Kubernetes only supports **expanding** PVCs, not shrinking them
+
+**Solutions**:
+1. **Keep current size** - Simplest, no data loss
+2. **Backup and recreate** - Delete PVC, create new smaller one, restore data
+3. **Direct NFS copy** - If using NFS CSI driver:
+   - Old PVC path: `/mnt/k8s-ssd-pool/k8s-nfs-share/pvc-<old-uuid>`
+   - New PVC path: `/mnt/k8s-ssd-pool/k8s-nfs-share/pvc-<new-uuid>`
+   - Copy data on NFS server: `cp -av /old/path/* /new/path/`
+
+**Important**: Chart upgrades may change PVC names (e.g., app-template 3.x uses `<app>-config`, 4.x uses `<app>`). Plan data migration accordingly.

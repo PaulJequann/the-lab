@@ -43,7 +43,7 @@ spec:
             enabled: true
             className: cilium
             annotations:
-              cert-manager.io/cluster-issuer: cloudflare
+              cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
             hosts:
               - host: overseerr2.local.bysliek.com
                 paths:

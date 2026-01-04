@@ -8,13 +8,13 @@ metadata:
     argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   acme:
-    # stage 
+    # stage
     # server: https://acme-staging-v02.api.letsencrypt.org/directory
     # production
     server: https://acme-v02.api.letsencrypt.org/directory
     email: pauljm12@gmail.com
     privateKeySecretRef:
-      name: "cloudflare-private-key"
+      name: "cloudflare-cluster-issuer-private-key"
     solvers:
       - dns01:
           cloudflare:
