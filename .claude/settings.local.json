@@ -3,7 +3,9 @@
     "allow": [
       "Bash(kubectl get:*)",
       "Bash(kubectl describe:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)"
     ]
   }
 }
