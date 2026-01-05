@@ -402,6 +402,43 @@ service:
 
 **Common error**: Using wrong port (e.g., 7878 for Overseerr instead of 5055) will cause connection refused errors. Verify by checking pod logs for "Server ready on port XXXX".
 
+### Internal Service Communication
+**Critical**: Apps in the same namespace should communicate using internal Kubernetes service DNS, not external ingress domains.
+
+**Correct pattern (same namespace):**
+```
+Overseerr → Radarr: http://radarr:7878
+Overseerr → Sonarr: http://sonarr:8989
+```
+
+**Correct pattern (fully qualified):**
+```
+http://<service-name>.<namespace>.svc.cluster.local:<port>
+http://radarr.media.svc.cluster.local:7878
+```
+
+**Wrong pattern (causes issues):**
+```
+https://radarr.local.bysliek.com:7878  ❌
+https://sonarr.local.bysliek.com:8989  ❌
+```
+
+**Why use internal DNS:**
+- Direct pod-to-pod communication (no ingress hop)
+- Lower latency
+- No TLS complexity for internal traffic
+- Avoids routing through external network
+- Works even if ingress is down
+
+**Example configurations:**
+- **Overseerr** connecting to Radarr: `http://radarr:7878`
+- **Overseerr** connecting to Sonarr: `http://sonarr:8989`
+- **Sonarr/Radarr** connecting to Prowlarr: `http://prowlarr:9696`
+
+**When to use ingress domains:**
+- Browser access from outside the cluster
+- External API calls from non-Kubernetes services
+
 ### Dual-Storage Configuration
 Media apps typically need two storage mounts:
 
