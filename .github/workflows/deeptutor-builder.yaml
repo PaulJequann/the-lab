@@ -1,0 +1,78 @@
+name: Build DeepTutor Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to build (branch, tag, or commit SHA)'
+        required: false
+        default: 'main'
+        type: string
+  schedule:
+    # Run weekly on Sundays at midnight UTC to pull upstream updates
+    - cron: '0 0 * * 0'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: pauljequann/deeptutor
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout DeepTutor upstream repository
+        uses: actions/checkout@v4
+        with:
+          repository: HKUDS/DeepTutor
+          ref: ${{ inputs.ref || 'main' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Always tag as latest
+            type=raw,value=latest
+            # Tag with commit SHA from upstream repo
+            type=sha,prefix=,format=short
+            # Tag with date for scheduled builds
+            type=schedule,pattern={{date 'YYYY-MM-DD'}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Output image tags
+        run: |
+          echo "## Image Built Successfully! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Pull command:**" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

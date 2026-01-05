@@ -36,3 +36,6 @@ __pycache__/
 # SOPS encrypted file backups
 **/*.encrypted.bak
 **/*.checksum
+
+# Local planning documents
+.claude/plans/

@@ -1,0 +1,138 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: deeptutor
+  namespace: argocd
+spec:
+  destination:
+    namespace: apps
+    server: https://kubernetes.default.svc
+    finalizers:
+      - resources-finalizer.argocd.argoproj.io
+  project: apps
+  source:
+    chart: app-template
+    repoURL: https://bjw-s-labs.github.io/helm-charts
+    targetRevision: 4.5.0
+    helm:
+      releaseName: deeptutor
+      valuesObject:
+        controllers:
+          deeptutor:
+            pod:
+              securityContext:
+                fsGroup: 1000
+                runAsUser: 1000
+                runAsGroup: 1000
+            containers:
+              app:
+                image:
+                  repository: ghcr.io/pauljequann/deeptutor
+                  tag: latest
+                  pullPolicy: Always
+
+                env:
+                  - name: TZ
+                    value: America/New_York
+                  # LLM Configuration
+                  - name: LLM_BINDING
+                    value: "openai"
+                  - name: LLM_MODEL
+                    value: "gemini-2.0-flash"
+                  - name: LLM_BINDING_HOST
+                    value: "https://generativelanguage.googleapis.com/v1beta/openai/"
+                  - name: DISABLE_SSL_VERIFY
+                    value: "False"
+
+                  # Embedding Configuration
+                  - name: EMBEDDING_BINDING
+                    value: "openai"
+                  - name: EMBEDDING_MODEL
+                    value: ""
+                  - name: EMBEDDING_BINDING_HOST
+                    value: "https://generativelanguage.googleapis.com/v1beta/openai/"
+                  - name: EMBEDDING_DIM
+                    value: "768"
+                  - name: EMBEDDING_MAX_TOKENS
+                    value: "2048"
+
+                  # Service Ports
+                  - name: BACKEND_PORT
+                    value: "8001"
+                  - name: FRONTEND_PORT
+                    value: "3782"
+
+                  # Logging
+                  - name: RAG_TOOL_MODULE_LOG_LEVEL
+                    value: "INFO"
+
+                  # API Keys from Sealed Secret
+                  - name: LLM_BINDING_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: deeptutor-secrets
+                        key: LLM_BINDING_API_KEY
+                  - name: EMBEDDING_BINDING_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: deeptutor-secrets
+                        key: EMBEDDING_BINDING_API_KEY
+                  - name: PERPLEXITY_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: deeptutor-secrets
+                        key: PERPLEXITY_API_KEY
+                ports:
+                  - name: http
+                    containerPort: 3782
+                  - name: backend
+                    containerPort: 8001
+            service:
+              app:
+                controller: deeptutor
+                ports:
+                  http:
+                    port: 3782
+                  backend:
+                    port: 8001
+            ingress:
+              app:
+                enabled: true
+                className: cilium
+                annotations:
+                  cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+                hosts:
+                  - host: deeptutor.local.bysliek.com
+                    paths:
+                      - path: /
+                        pathType: Prefix
+                        service:
+                          identifier: app
+                          port: http
+                tls:
+                  - secretName: deeptutor-tls
+                    hosts:
+                      - deeptutor.local.bysliek.com
+              persistence:
+                data:
+                  enabled: true
+                  type: persistentVolumeClaim
+                  storageClass: nfs-csi
+                  accessMode: ReadWriteOnce
+                  size: 20Gi
+                  globalMounts:
+                    - path: /app/data
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: "5s"
+        factor: 2
+        maxDuration: "3m"
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
