@@ -10,7 +10,7 @@ spec:
   project: infrastructure
   source:
     repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
-    chart: gha-runner-scale-set-controller
+    chart: gha-runner-scale-set
     targetRevision: 0.9.3
     helm:
       releaseName: arc-runner-set

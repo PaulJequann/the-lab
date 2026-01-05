@@ -13,7 +13,7 @@ spec:
     - {{sealed_secrets_chart_repo}}
     - {{cilium_repo_url}}
     - {{csi_driver_nfs_chart_repo}}
-    - {{ arc_chart_repo }}/*
+    - {{arc_chart_repo}}
   destinations:
     - namespace: "*"
       server: "https://kubernetes.default.svc"
