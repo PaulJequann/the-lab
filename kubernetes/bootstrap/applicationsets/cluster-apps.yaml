@@ -12,7 +12,7 @@ spec:
   generators:
     - git:
         repoURL: https://github.com/PaulJequann/the-lab
-        revision: the-lab-v2
+        revision: main
         directories:
           - path: kubernetes/core/*
           - path: kubernetes/infrastructure/*
@@ -38,7 +38,7 @@ spec:
       project: '{{index .path.segments 1}}'
       source:
         repoURL: https://github.com/PaulJequann/the-lab
-        targetRevision: the-lab-v2
+        targetRevision: main
         path: '{{.path.path}}'
         directory:
           recurse: true
