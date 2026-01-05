@@ -9,16 +9,17 @@ metadata:
 spec:
   project: infrastructure
   source:
-    chart: oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
-    targetRevision: 0.9.3
+    repoURL: {{arc_chart_repo}}
+    chart: {{arc_chart_name}}
+    targetRevision: {{arc_chart_version}}
     helm:
       releaseName: arc-runner-set
       valuesObject:
         githubConfigUrl: "{{ arc_github_config_url }}"
         githubConfigSecret: arc-github-token
 
-        minRunners: {{ arc_min_runners }}
-        maxRunners: {{ arc_max_runners }}
+        minRunners: {{arc_min_runners}}
+        maxRunners: {{arc_max_runners}}
 
         # Runner configuration
         runnerScaleSetName: "the-lab-runners"
@@ -61,7 +62,7 @@ spec:
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: {{ arc_runner_namespace }}
+    namespace: {{arc_runner_namespace}}
 
   syncPolicy:
     automated:
