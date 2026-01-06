@@ -15,6 +15,9 @@ spec:
     helm:
       releaseName: arc-runner-set
       valuesObject:
+        controllerServiceAccount:
+          name: arc-gha-rs-controller
+          namespace: arc-system
         githubConfigUrl: "{{ arc_github_config_url }}"
         githubConfigSecret: arc-github-token
 
