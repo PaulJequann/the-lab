@@ -41,7 +41,7 @@ spec:
         k8sServiceHost: "10.0.10.50"
         k8sServicePort: 6443
         gatewayAPI:
-          enabled: true
+          enabled: false
         loadBalancer:
           serviceTopology: true
           algorithm: maglev

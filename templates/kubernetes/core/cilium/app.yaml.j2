@@ -41,7 +41,7 @@ spec:
         k8sServiceHost: "{{ control_plane_endpoint }}"
         k8sServicePort: {{ api_port }}
         gatewayAPI:
-          enabled: true
+          enabled: false
         loadBalancer:
           serviceTopology: true
           algorithm: maglev
