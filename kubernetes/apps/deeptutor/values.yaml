@@ -20,9 +20,9 @@ app-template:
             DISABLE_SSL_VERIFY: "False"
             # Embedding Configuration
             EMBEDDING_BINDING: "openai"
-            EMBEDDING_MODEL: "text-embedding-004"
+            EMBEDDING_MODEL: "gemini-embedding-001"
             EMBEDDING_BINDING_HOST: "https://generativelanguage.googleapis.com/v1beta/openai/"
-            EMBEDDING_DIM: "768"
+            EMBEDDING_DIM: "3072"
             EMBEDDING_MAX_TOKENS: "2048"
             # Service Ports
             BACKEND_PORT: "8001"
