@@ -13,9 +13,11 @@ spec:
     - ghcr.io/hkuds/deeptutor
   
   destinations:
-    - namespace: 'app-*'  # app- prefixed namespaces
+    - namespace: 'deeptutor'
       server: https://kubernetes.default.svc
-    - namespace: 'media'  # media namespace for *arr apps
+    - namespace: 'media'
+      server: https://kubernetes.default.svc
+    - namespace: 'app-*'  # Legacy pattern for backwards compatibility
       server: https://kubernetes.default.svc
   
   clusterResourceWhitelist:

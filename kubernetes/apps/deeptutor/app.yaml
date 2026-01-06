@@ -6,7 +6,7 @@ metadata:
   namespace: argocd
 spec:
   destination:
-    namespace: apps
+    namespace: deeptutor
     server: https://kubernetes.default.svc
     finalizers:
       - resources-finalizer.argocd.argoproj.io

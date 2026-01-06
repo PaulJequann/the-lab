@@ -102,10 +102,12 @@ Applications deploy in this order based on directory:
 
    - **Both are required** or ArgoCD will reject the application with repository access errors
 
-2. **Verify namespace is allowed** in the project destinations:
-   - Check `spec.destinations` in the project file
-   - Common patterns: `app-*`, `media`, `infrastructure-*`
-   - Add new namespace pattern if needed
+2. **Add namespace to project destinations**:
+   - Edit `templates/kubernetes/bootstrap/projects/<project-name>.yaml.j2`
+   - Add the specific namespace to `spec.destinations` list
+   - Example: Add `- namespace: 'deeptutor'` for deeptutor app
+   - The namespace name should match the directory name in `kubernetes/apps/<app-name>/`
+   - This step is **required** - the ApplicationSet uses directory basename as namespace
 
 #### Option 1: Auto-discovered via ApplicationSet (Recommended)
 1. Create directory: `kubernetes/<category>/<app-name>/`
@@ -216,11 +218,11 @@ task bootstrap          # Deploy ArgoCD root app
 
 ### Adding New Application
 ```bash
-# CRITICAL: First add source repos to ArgoCD project
+# CRITICAL: First update ArgoCD project configuration
 # Edit templates/kubernetes/bootstrap/projects/<project>.yaml.j2
 # 1. Add Helm chart repo URL to spec.sourceRepos (if using external chart)
 # 2. Add container image repo to spec.sourceRepos (e.g., ghcr.io/owner/image)
-# 3. Verify namespace is allowed in spec.destinations
+# 3. Add namespace to spec.destinations (e.g., - namespace: 'myapp')
 
 # Create app directory and manifests
 mkdir -p kubernetes/apps/myapp
@@ -255,13 +257,14 @@ kubectl create secret generic my-secret --dry-run=client -o yaml | \
 ## Anti-Patterns to Avoid
 
 1. **Don't** forget to add both Helm chart repos AND container image repos to the ArgoCD project's `sourceRepos` list
-2. **Don't** manually edit generated files (files without `.j2` extension in template paths)
-3. **Don't** create apps outside the category directories (core/infrastructure/apps/monitoring)
-4. **Don't** use different namespace than app name without good reason
-5. **Don't** disable automated sync unless absolutely necessary
-6. **Don't** create documentation files proactively (only when explicitly requested)
-7. **Don't** commit plaintext secrets to Git
-8. **Don't** add "Generated with Claude Code" attribution to commits unless explicitly requested
+2. **Don't** forget to add the namespace to the ArgoCD project's `destinations` list (ApplicationSet uses directory name as namespace)
+3. **Don't** manually edit generated files (files without `.j2` extension in template paths)
+4. **Don't** create apps outside the category directories (core/infrastructure/apps/monitoring)
+5. **Don't** use different namespace than app name without good reason
+6. **Don't** disable automated sync unless absolutely necessary
+7. **Don't** create documentation files proactively (only when explicitly requested)
+8. **Don't** commit plaintext secrets to Git
+9. **Don't** add "Generated with Claude Code" attribution to commits unless explicitly requested
 
 ## Tools and Dependencies
 
