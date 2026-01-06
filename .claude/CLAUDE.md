@@ -562,3 +562,152 @@ See [templates/kubernetes/bootstrap/apps/sonarr.yaml.j2](templates/kubernetes/bo
    - Copy data on NFS server: `cp -av /old/path/* /new/path/`
 
 **Important**: Chart upgrades may change PVC names (e.g., app-template 3.x uses `<app>-config`, 4.x uses `<app>`). Plan data migration accordingly.
+
+## TLS/HTTPS Troubleshooting
+
+### Issue: Ingress TLS Connection Fails (Connection Reset During Handshake)
+
+**Symptoms**:
+- HTTP works (`curl http://example.com` returns 404 or content)
+- HTTPS fails with "Connection reset by peer" or TLS handshake errors
+- Ingress status shows `loadBalancer: {}` (no LoadBalancer IP assigned)
+- Other applications' HTTPS works fine
+
+**Root Cause**: The ingress controller hasn't accepted the ingress resource, so it's not being configured for TLS termination. This prevents TLS secrets from being synced to the ingress controller.
+
+### Diagnostic Steps (In Order)
+
+**1. Check Ingress Status** (Most Important)
+```bash
+kubectl get ingress -n <namespace> <ingress-name> -o yaml | grep -A 10 "status:"
+```
+
+Compare with a working ingress:
+- ❌ **BROKEN**: `status: loadBalancer: {}`
+- ✅ **WORKING**: `status: loadBalancer: ingress: - ip: 10.0.10.76 ports: [80, 443]`
+
+If no LoadBalancer IP is assigned, the ingress controller hasn't accepted this ingress. **This is your problem.**
+
+**2. Compare with Working Ingress**
+```bash
+# Get a working ingress spec
+kubectl get ingress -n media sonarr -o yaml
+
+# Compare with broken ingress
+kubectl get ingress -n <namespace> <name> -o yaml
+```
+
+Check:
+- Same `ingressClassName`?
+- Same cert-manager annotation format?
+- Same TLS secret naming pattern?
+- Same service port reference?
+
+**3. Check Ingress Controller Logs**
+For Cilium ingress controller:
+```bash
+kubectl logs -n kube-system -l app.kubernetes.io/name=cilium-operator --tail=100 | grep -i "error\|crash"
+```
+
+Look for:
+- Controller crashes (e.g., "kind must be registered to the Scheme")
+- Secret sync failures
+- Webhook errors
+
+**The logs tell you WHY the controller rejected the ingress.**
+
+**4. Check Events on Ingress**
+```bash
+kubectl describe ingress <name> -n <namespace>
+```
+
+Events section shows recent status changes and errors.
+
+**5. Verify TLS Secret Exists**
+```bash
+kubectl get secret <tls-secret-name> -n <namespace>
+kubectl describe secret <tls-secret-name> -n <namespace>
+```
+
+Secret should have both `tls.crt` and `tls.key` keys.
+
+### Common Causes & Solutions
+
+#### Cause 1: Ingress Controller Crash Loop (Most Common)
+**Evidence**: Cilium operator logs show repeated errors, no recent successful reconciliations
+
+**Example Error**:
+```
+kind must be registered to the Scheme" error="no kind is registered for the type v1.Gateway"
+```
+
+**Solution**: Check what the controller is trying to watch that's causing crashes
+- In Cilium 1.17.1, Gateway API was enabled but not installed
+- Disabling unused features in Cilium config fixed it:
+  ```yaml
+  gatewayAPI:
+    enabled: false  # Not using Gateway API, only Ingress
+  ```
+- Restart the controller pod to pick up new config
+
+**Key Lesson**: Don't assume features are working just because they're enabled. If the operator crashes, it can't sync any secrets.
+
+#### Cause 2: Cert-Manager Not Issuing Certificate
+**Evidence**: Secret exists but is empty or cert-manager logs show errors
+
+**Check**:
+```bash
+kubectl get certificate -n <namespace>
+kubectl describe certificate <cert-name> -n <namespace>
+```
+
+**Solution**:
+- Verify ClusterIssuer exists: `kubectl get clusterissuer`
+- Verify cert-manager annotation in ingress matches exact ClusterIssuer name
+- Check cert-manager logs for DNS01 challenge failures
+
+#### Cause 3: Wrong Ingress Configuration
+**Evidence**: Ingress exists but doesn't match working examples
+
+**Common mistakes**:
+- Missing `ingressClassName: cilium`
+- Wrong cert-manager annotation value
+- TLS secret name doesn't match ingress TLS spec
+
+**Check**: Compare line-by-line with a working ingress using `kubectl diff` or manual comparison
+
+#### Cause 4: Service Port Mismatch
+**Evidence**: Ingress gets LoadBalancer IP but requests fail with 503
+
+**Check**:
+```bash
+# Get service port from ingress
+kubectl get ingress <name> -n <namespace> -o jsonpath='{.spec.rules[0].http.paths[0].backend.service.port.number}'
+
+# Verify service has that port
+kubectl get svc <service-name> -n <namespace>
+```
+
+**Solution**: Match service port number exactly
+
+### How to Approach This in the Future
+
+1. **Always check ingress status first** - The LoadBalancer IP tells you if the controller accepted it
+2. **Find a working example** - Compare specs side-by-side, not from memory
+3. **Check controller logs** - They tell you WHY it rejected the ingress (not guessing)
+4. **Don't modify core components based on assumptions** - Verify with logs first
+5. **Use controller logs as evidence** - Cilium operator logs clearly showed the Gateway API crash
+
+### Example: Fixing the DeepTutor TLS Issue
+
+**What We Found**:
+1. Ingress status: `loadBalancer: {}` → Controller didn't accept it
+2. Compared with Sonarr: Sonarr had `loadBalancer: ingress: - ip: 10.0.10.76`
+3. Both ingresses were identical in structure
+4. Cilium operator logs: Crash loop due to Gateway API schema error
+5. When we disabled Gateway API, operator restarted cleanly
+6. Immediately after restart: Cilium reconciled the ingress and assigned LoadBalancer IP
+7. TLS secrets were synced to cilium-secrets namespace
+8. HTTPS now works
+
+**Key Insight**: The ingress itself was fine. The problem was upstream - the controller couldn't process any ingresses because it was crashing.

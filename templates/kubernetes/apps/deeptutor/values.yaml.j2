@@ -11,6 +11,7 @@
             pullPolicy: Always
           env:
             TZ: America/New_York
+            NEXT_PUBLIC_BASE_URL: "http://deeptutor:{{deeptutor_backend_port}}"
             # LLM Configuration
             LLM_BINDING: "{{ deeptutor_llm_binding }}"
             LLM_MODEL: "{{ deeptutor_llm_model }}"
