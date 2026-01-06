@@ -16,7 +16,7 @@ spec:
       releaseName: arc-runner-set
       valuesObject:
         controllerServiceAccount:
-          name: arc-gha-rs-controller
+          name: gha-rs-controller
           namespace: arc-system
         githubConfigUrl: "https://github.com/PaulJequann/the-lab"
         githubConfigSecret: arc-github-token
