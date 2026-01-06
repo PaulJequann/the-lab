@@ -40,9 +40,6 @@ spec:
         repoURL: https://github.com/PaulJequann/the-lab
         targetRevision: main
         path: '{{.path.path}}'
-        directory:
-          recurse: true
-
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{.path.basename}}'

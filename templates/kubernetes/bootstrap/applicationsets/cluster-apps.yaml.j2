@@ -43,9 +43,7 @@ spec:
       source:
         repoURL: {{ github_repo_url }}
         targetRevision: {{ github_repo_branch }}
-        path: {% raw %}'{{.path.path}}'
-{% endraw %}        directory:
-          recurse: true
+        path: {% raw %}'{{.path.path}}'{% endraw %}
 
       destination:
         server: https://kubernetes.default.svc
