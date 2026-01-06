@@ -20,109 +20,102 @@ spec:
       valuesObject:
         controllers:
           deeptutor:
+            containers:
+              app:
+                image:
+                  repository: ghcr.io/hkuds/deeptutor
+                  tag: latest
+                  pullPolicy: Always
+                env:
+                  TZ: America/New_York
+                  # LLM Configuration
+                  LLM_BINDING: "openai"
+                  LLM_MODEL: "gemini-2.0-flash"
+                  LLM_BINDING_HOST: "https://generativelanguage.googleapis.com/v1beta/openai/"
+                  DISABLE_SSL_VERIFY: "False"
+                  # Embedding Configuration
+                  EMBEDDING_BINDING: "openai"
+                  EMBEDDING_MODEL: "text-embedding-005"
+                  EMBEDDING_BINDING_HOST: "https://generativelanguage.googleapis.com/v1beta/openai/"
+                  EMBEDDING_DIM: "768"
+                  EMBEDDING_MAX_TOKENS: "2048"
+                  # Service Ports
+                  BACKEND_PORT: "8001"
+                  FRONTEND_PORT: "3782"
+                  # Logging
+                  RAG_TOOL_MODULE_LOG_LEVEL: "INFO"
+                  # API Keys from Sealed Secret
+                  LLM_BINDING_API_KEY:
+                    valueFrom:
+                      secretKeyRef:
+                        name: deeptutor-secrets
+                        key: LLM_BINDING_API_KEY
+                  EMBEDDING_BINDING_API_KEY:
+                    valueFrom:
+                      secretKeyRef:
+                        name: deeptutor-secrets
+                        key: EMBEDDING_BINDING_API_KEY
+                  PERPLEXITY_API_KEY:
+                    valueFrom:
+                      secretKeyRef:
+                        name: deeptutor-secrets
+                        key: PERPLEXITY_API_KEY
+                probes:
+                  liveness:
+                    enabled: false
+                  readiness:
+                    enabled: false
+                  startup:
+                    enabled: false
             pod:
               securityContext:
                 fsGroup: 1000
                 runAsUser: 1000
                 runAsGroup: 1000
-            containers:
-              app:
-                image:
-                  repository: ghcr.io/pauljequann/deeptutor
-                  tag: latest
-                  pullPolicy: Always
 
-                env:
-                  - name: TZ
-                    value: America/New_York
-                  # LLM Configuration
-                  - name: LLM_BINDING
-                    value: "openai"
-                  - name: LLM_MODEL
-                    value: "gemini-2.0-flash"
-                  - name: LLM_BINDING_HOST
-                    value: "https://generativelanguage.googleapis.com/v1beta/openai/"
-                  - name: DISABLE_SSL_VERIFY
-                    value: "False"
+        service:
+          app:
+            controller: deeptutor
+            ports:
+              http:
+                port: 3782
+              backend:
+                port: 8001
 
-                  # Embedding Configuration
-                  - name: EMBEDDING_BINDING
-                    value: "openai"
-                  - name: EMBEDDING_MODEL
-                    value: ""
-                  - name: EMBEDDING_BINDING_HOST
-                    value: "https://generativelanguage.googleapis.com/v1beta/openai/"
-                  - name: EMBEDDING_DIM
-                    value: "768"
-                  - name: EMBEDDING_MAX_TOKENS
-                    value: "2048"
-
-                  # Service Ports
-                  - name: BACKEND_PORT
-                    value: "8001"
-                  - name: FRONTEND_PORT
-                    value: "3782"
-
-                  # Logging
-                  - name: RAG_TOOL_MODULE_LOG_LEVEL
-                    value: "INFO"
-
-                  # API Keys from Sealed Secret
-                  - name: LLM_BINDING_API_KEY
-                    valueFrom:
-                      secretKeyRef:
-                        name: deeptutor-secrets
-                        key: LLM_BINDING_API_KEY
-                  - name: EMBEDDING_BINDING_API_KEY
-                    valueFrom:
-                      secretKeyRef:
-                        name: deeptutor-secrets
-                        key: EMBEDDING_BINDING_API_KEY
-                  - name: PERPLEXITY_API_KEY
-                    valueFrom:
-                      secretKeyRef:
-                        name: deeptutor-secrets
-                        key: PERPLEXITY_API_KEY
-                ports:
-                  - name: http
-                    containerPort: 3782
-                  - name: backend
-                    containerPort: 8001
-            service:
-              app:
-                controller: deeptutor
-                ports:
-                  http:
-                    port: 3782
-                  backend:
-                    port: 8001
-            ingress:
-              app:
-                enabled: true
-                className: cilium
-                annotations:
-                  cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+        ingress:
+          app:
+            enabled: true
+            className: cilium
+            annotations:
+              cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+            hosts:
+              - host: deeptutor.local.bysliek.com
+                paths:
+                  - path: /
+                    pathType: Prefix
+                    service:
+                      identifier: app
+                      port: http
+            tls:
+              - secretName: deeptutor-tls
                 hosts:
-                  - host: deeptutor.local.bysliek.com
-                    paths:
-                      - path: /
-                        pathType: Prefix
-                        service:
-                          identifier: app
-                          port: http
-                tls:
-                  - secretName: deeptutor-tls
-                    hosts:
-                      - deeptutor.local.bysliek.com
-              persistence:
-                data:
-                  enabled: true
-                  type: persistentVolumeClaim
-                  storageClass: nfs-csi
-                  accessMode: ReadWriteOnce
-                  size: 20Gi
-                  globalMounts:
-                    - path: /app/data
+                  - deeptutor.local.bysliek.com
+
+        persistence:
+          data:
+            enabled: true
+            type: persistentVolumeClaim
+            storageClass: nfs-csi
+            accessMode: ReadWriteOnce
+            size: 20Gi
+            globalMounts:
+              - path: /app/data
+          config:
+            enabled: true
+            type: emptyDir
+            globalMounts:
+              - path: /app/config
+                readOnly: false
   syncPolicy:
     automated:
       prune: true
