@@ -9,6 +9,7 @@ metadata:
 spec:
   project: infrastructure
   source:
+    path: .
     repoURL: oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
     targetRevision: 0.13.1
     helm:

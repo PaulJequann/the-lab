@@ -9,8 +9,9 @@ metadata:
 spec:
   project: infrastructure
   source:
+    path: .
     repoURL: {{arc_controller_repo}}
-    targetRevision: {{arc_chart_version}}
+    targetRevision: {{arc_controller_chart_version}}
   destination:
     server: https://kubernetes.default.svc
     namespace: arc-system
