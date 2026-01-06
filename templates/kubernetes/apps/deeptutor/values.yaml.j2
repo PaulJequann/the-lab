@@ -45,15 +45,6 @@
                 secretKeyRef:
                   name: deeptutor-secrets
                   key: PERPLEXITY_API_KEY
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - /bin/sh
-                  - -c
-                  - |
-                    echo "Patching Next.js static files..."
-                    find /app/web/.next/static -type f -name "*.js" -exec sed -i 's|http://localhost:8001|https://{{deeptutor_domain}}|g' {} +
           probes:
             liveness:
               enabled: false
@@ -83,6 +74,11 @@
       hosts:
         - host: {{deeptutor_domain}}
           paths:
+            - path: /api
+              pathType: Prefix
+              service:
+                identifier: app
+                port: backend
             - path: /
               pathType: Prefix
               service:
