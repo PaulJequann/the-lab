@@ -15,6 +15,7 @@ spec:
     - https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
     - oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
     - oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+    - oci://ghcr.io/actions/actions-runner-controller-charts
   destinations:
     - namespace: "*"
       server: "https://kubernetes.default.svc"
