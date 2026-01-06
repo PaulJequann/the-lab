@@ -62,7 +62,8 @@ spec:
                 securityContext: {privileged: true}
                 command:
                   - dockerd-entrypoint.sh
-                  - --storage-driver=vfs
+                  - --storage-driver=overlay2
+                  - --feature.containerd-snapshotter=true
                   - --group
                   - "1001"
                 resources:
