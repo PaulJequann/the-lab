@@ -9,9 +9,8 @@ metadata:
 spec:
   project: infrastructure
   source:
-    repoURL: {{arc_chart_repo}}
-    chart: {{arc_runner_chart_name}}
-    targetRevision: {{arc_chart_version}}
+    repoURL: {{arc_runner_repo}}
+    targetRevision: {{arc_runner_chart_version}}
     helm:
       releaseName: arc-runner-set
       valuesObject:
