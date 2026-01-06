@@ -10,7 +10,8 @@ spec:
   project: infrastructure
   source:
     path: .
-    repoURL: {{arc_runner_repo}}
+    repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set
     targetRevision: {{arc_runner_chart_version}}
     helm:
       releaseName: arc-runner-set

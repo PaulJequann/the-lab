@@ -9,8 +9,8 @@ metadata:
 spec:
   project: infrastructure
   source:
-    path: .
-    repoURL: {{arc_controller_repo}}
+    repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set-controller
     targetRevision: {{arc_controller_chart_version}}
   destination:
     server: https://kubernetes.default.svc
