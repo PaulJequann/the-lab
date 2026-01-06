@@ -36,6 +36,8 @@ spec:
           spec:
             containers:
               - name: runner
+                image: "ghcr.io/actions/runner:latest"
+                command: ["/home/runner/run.sh"]
                 resources:
                   limits:
                     cpu: "4"
@@ -44,6 +46,9 @@ spec:
                     cpu: "2"
                     memory: "4Gi"
               - name: dind
+                image: docker:dind
+                securityContext:
+                  privileged: true
                 resources:
                   limits:
                     cpu: "2"
