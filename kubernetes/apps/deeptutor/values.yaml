@@ -1,0 +1,101 @@
+---
+# Values for bjw-s app-template chart
+app-template:
+  controllers:
+    deeptutor:
+      containers:
+        app:
+          image:
+            repository: ghcr.io/hkuds/deeptutor
+            tag: latest
+            pullPolicy: Always
+          env:
+            TZ: America/New_York
+            # LLM Configuration
+            LLM_BINDING: "openai"
+            LLM_MODEL: "gemini-2.0-flash"
+            LLM_BINDING_HOST: "https://generativelanguage.googleapis.com/v1beta/openai/"
+            DISABLE_SSL_VERIFY: "False"
+            # Embedding Configuration
+            EMBEDDING_BINDING: "openai"
+            EMBEDDING_MODEL: "text-embedding-005"
+            EMBEDDING_BINDING_HOST: "https://generativelanguage.googleapis.com/v1beta/openai/"
+            EMBEDDING_DIM: "768"
+            EMBEDDING_MAX_TOKENS: "2048"
+            # Service Ports
+            BACKEND_PORT: "8001"
+            FRONTEND_PORT: "3782"
+            # Logging
+            RAG_TOOL_MODULE_LOG_LEVEL: "INFO"
+            # API Keys from Sealed Secret
+            LLM_BINDING_API_KEY:
+              valueFrom:
+                secretKeyRef:
+                  name: deeptutor-secrets
+                  key: LLM_BINDING_API_KEY
+            EMBEDDING_BINDING_API_KEY:
+              valueFrom:
+                secretKeyRef:
+                  name: deeptutor-secrets
+                  key: EMBEDDING_BINDING_API_KEY
+            PERPLEXITY_API_KEY:
+              valueFrom:
+                secretKeyRef:
+                  name: deeptutor-secrets
+                  key: PERPLEXITY_API_KEY
+          probes:
+            liveness:
+              enabled: false
+            readiness:
+              enabled: false
+            startup:
+              enabled: false
+      pod:
+        securityContext:
+          fsGroup: 1000
+          runAsUser: 1000
+          runAsGroup: 1000
+
+  service:
+    app:
+      controller: deeptutor
+      ports:
+        http:
+          port: 3782
+        backend:
+          port: 8001
+
+  ingress:
+    app:
+      enabled: true
+      className: cilium
+      annotations:
+        cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+      hosts:
+        - host: deeptutor.local.bysliek.com
+          paths:
+            - path: /
+              pathType: Prefix
+              service:
+                identifier: app
+                port: http
+      tls:
+        - secretName: deeptutor-tls
+          hosts:
+            - deeptutor.local.bysliek.com
+
+  persistence:
+    data:
+      enabled: true
+      type: persistentVolumeClaim
+      storageClass: nfs-csi
+      accessMode: ReadWriteOnce
+      size: 20Gi
+      globalMounts:
+        - path: /app/data
+    config:
+      enabled: true
+      type: emptyDir
+      globalMounts:
+        - path: /app/config
+          readOnly: false
