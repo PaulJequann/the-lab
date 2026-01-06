@@ -87,11 +87,32 @@ Applications deploy in this order based on directory:
 
 ### Adding a New Application
 
+**CRITICAL FIRST STEP**: Before creating the application, ensure the source repository is authorized in the ArgoCD project:
+
+1. **Add source repositories to ArgoCD project** - Edit `templates/kubernetes/bootstrap/projects/<project-name>.yaml.j2`:
+
+   a. **Helm chart repository** (if using external Helm chart):
+      - Add the chart repository URL to `spec.sourceRepos` list
+      - Example: `https://bjw-s-labs.github.io/helm-charts`
+
+   b. **Container image repository** (REQUIRED for all apps):
+      - Add the container image registry to `spec.sourceRepos` list
+      - Example: `ghcr.io/hkuds/deeptutor` or `lscr.io/linuxserver/sonarr`
+      - Format: `<registry>/<owner>/<image>` (no tag, no `https://`)
+
+   - **Both are required** or ArgoCD will reject the application with repository access errors
+
+2. **Verify namespace is allowed** in the project destinations:
+   - Check `spec.destinations` in the project file
+   - Common patterns: `app-*`, `media`, `infrastructure-*`
+   - Add new namespace pattern if needed
+
 #### Option 1: Auto-discovered via ApplicationSet (Recommended)
 1. Create directory: `kubernetes/<category>/<app-name>/`
 2. Add Kubernetes manifests (can be plain YAML, Kustomize, or Helm)
-3. Commit and push - ApplicationSet will auto-create the Application
-4. Category determines sync wave automatically
+3. Run `task configure` to render templates
+4. Commit and push - ApplicationSet will auto-create the Application
+5. Category determines sync wave automatically
 
 #### Option 2: Explicit Application Definition
 For apps needing custom config (different sync wave, Helm charts, etc.):
@@ -195,15 +216,21 @@ task bootstrap          # Deploy ArgoCD root app
 
 ### Adding New Application
 ```bash
-# 1. Create app directory and manifests
-mkdir -p kubernetes/apps/myapp
-# 2. Add manifests
-# 3. Commit and push - ArgoCD auto-deploys
+# CRITICAL: First add source repos to ArgoCD project
+# Edit templates/kubernetes/bootstrap/projects/<project>.yaml.j2
+# 1. Add Helm chart repo URL to spec.sourceRepos (if using external chart)
+# 2. Add container image repo to spec.sourceRepos (e.g., ghcr.io/owner/image)
+# 3. Verify namespace is allowed in spec.destinations
 
-# OR for Helm chart:
-# 1. Create from template
-# 2. Modify app.yaml
-# 3. task configure && commit
+# Create app directory and manifests
+mkdir -p kubernetes/apps/myapp
+# Add manifests (or app.yaml for Helm chart)
+
+# Render templates
+task configure
+
+# Commit and push - ArgoCD auto-deploys
+git add -A && git commit -m "Add myapp" && git push
 ```
 
 ### Managing Secrets
@@ -227,13 +254,14 @@ kubectl create secret generic my-secret --dry-run=client -o yaml | \
 
 ## Anti-Patterns to Avoid
 
-1. **Don't** manually edit generated files (files without `.j2` extension in template paths)
-2. **Don't** create apps outside the category directories (core/infrastructure/apps/monitoring)
-3. **Don't** use different namespace than app name without good reason
-4. **Don't** disable automated sync unless absolutely necessary
-5. **Don't** create documentation files proactively (only when explicitly requested)
-6. **Don't** commit plaintext secrets to Git
-7. **Don't** add "Generated with Claude Code" attribution to commits unless explicitly requested
+1. **Don't** forget to add both Helm chart repos AND container image repos to the ArgoCD project's `sourceRepos` list
+2. **Don't** manually edit generated files (files without `.j2` extension in template paths)
+3. **Don't** create apps outside the category directories (core/infrastructure/apps/monitoring)
+4. **Don't** use different namespace than app name without good reason
+5. **Don't** disable automated sync unless absolutely necessary
+6. **Don't** create documentation files proactively (only when explicitly requested)
+7. **Don't** commit plaintext secrets to Git
+8. **Don't** add "Generated with Claude Code" attribution to commits unless explicitly requested
 
 ## Tools and Dependencies
 
