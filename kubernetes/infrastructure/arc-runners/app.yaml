@@ -34,6 +34,8 @@ spec:
         # Resource limits for runners
         template:
           spec:
+            securityContext:
+              fsGroup: 1001
             initContainers:
               - name: init-dind-externals
                 image: ghcr.io/actions/actions-runner:latest
