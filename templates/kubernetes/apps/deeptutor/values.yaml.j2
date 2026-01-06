@@ -109,7 +109,6 @@
   configMaps:
     env-local:
       enabled: true
-      nameOverride: deeptutor-env-local
       data:
         .env.local: |
           NEXT_PUBLIC_API_BASE=https://{{deeptutor_domain}}
