@@ -711,3 +711,86 @@ kubectl get svc <service-name> -n <namespace>
 8. HTTPS now works
 
 **Key Insight**: The ingress itself was fine. The problem was upstream - the controller couldn't process any ingresses because it was crashing.
+
+## Multi-Port Applications with Path-Based Ingress Routing
+
+### Problem: Frontend Can't Reach Backend in Same Pod
+
+When an application runs both a frontend and backend in the same container (e.g., Next.js + FastAPI), the frontend may fail to reach the backend with errors like:
+- `Failed to execute 'text' on 'Response': body stream already read`
+- API calls returning HTML instead of JSON
+
+**Root Cause**: The ingress routes all traffic to one port (typically the frontend), so browser API calls to `/api/*` hit the frontend instead of the backend.
+
+### Solution: Path-Based Routing in Ingress
+
+Configure the ingress to route different paths to different service ports:
+
+```yaml
+# In bjw-s app-template values
+service:
+  app:
+    controller: myapp
+    ports:
+      http:
+        port: 3000      # Frontend
+      backend:
+        port: 8001      # Backend API
+
+ingress:
+  app:
+    hosts:
+      - host: myapp.example.com
+        paths:
+          - path: /api           # Backend routes FIRST (more specific)
+            pathType: Prefix
+            service:
+              identifier: app
+              port: backend
+          - path: /              # Frontend catches everything else
+            pathType: Prefix
+            service:
+              identifier: app
+              port: http
+```
+
+**Key Points**:
+1. **Order matters**: More specific paths (`/api`) must come before catch-all (`/`)
+2. **Browser calls external URL**: `NEXT_PUBLIC_*` env vars are baked into client-side JS, so they MUST use the external ingress URL (not internal k8s DNS)
+3. **No DNS changes needed**: Path routing happens at the ingress controller level
+4. **Don't patch static files**: Avoid `postStart` hooks to sed-replace URLs in built JS files - fix routing instead
+
+### Example: DeepTutor (Next.js + FastAPI)
+
+DeepTutor runs Next.js frontend (port 3782) and FastAPI backend (port 8001) in the same container.
+
+**Symptoms**:
+- Frontend loaded but showed "backend offline"
+- Browser console: `Failed to execute 'text' on 'Response': body stream already read`
+- `curl https://deeptutor.local.bysliek.com/api/v1/knowledge` returned HTML (wrong!)
+
+**Fix**: Added path-based routing to send `/api/*` to port 8001:
+```yaml
+paths:
+  - path: /api
+    pathType: Prefix
+    service:
+      identifier: app
+      port: backend      # 8001 - FastAPI
+  - path: /
+    pathType: Prefix
+    service:
+      identifier: app
+      port: http         # 3782 - Next.js
+```
+
+**Verification**:
+```bash
+# Should return JSON from FastAPI
+curl -sk https://deeptutor.local.bysliek.com/api/v1/knowledge
+# Returns: {"detail":"Not Found"}  ← Correct! FastAPI 404 response
+
+# Should return HTML from Next.js
+curl -sk https://deeptutor.local.bysliek.com/ | head -c 100
+# Returns: <!DOCTYPE html>...
+```
