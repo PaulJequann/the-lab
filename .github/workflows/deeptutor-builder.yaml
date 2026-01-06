@@ -17,6 +17,14 @@ env:
   IMAGE_NAME: pauljequann/deeptutor
 
 jobs:
+  check-env:
+    runs-on: the-lab-runners
+    steps:
+      - name: Verify Software
+        run: |
+          which git || echo "Git is NOT installed"
+          which curl || echo "Curl is NOT installed"
+          id # Verify you are running as UID 1001 (runner)
   build-and-push:
     runs-on: the-lab-runners
     permissions:
