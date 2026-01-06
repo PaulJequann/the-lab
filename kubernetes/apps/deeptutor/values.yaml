@@ -11,7 +11,7 @@ app-template:
             pullPolicy: Always
           env:
             TZ: America/New_York
-            NEXT_PUBLIC_BASE_URL: "http://deeptutor:8001"
+            NEXT_PUBLIC_API_BASE_EXTERNAL: deeptutor.local.bysliek.com
             # LLM Configuration
             LLM_BINDING: "openai"
             LLM_MODEL: "gemini-2.0-flash"
@@ -98,3 +98,17 @@ app-template:
       globalMounts:
         - path: /app/config
           readOnly: false
+    env-local:
+      enabled: true
+      type: configMap
+      name: deeptutor-env-local
+      globalMounts:
+        - path: /app/web/.env.local
+          subPath: .env.local
+
+  configMap:
+    env-local:
+      enabled: true
+      data:
+        .env.local: |
+          NEXT_PUBLIC_API_BASE=http://deeptutor:8001
