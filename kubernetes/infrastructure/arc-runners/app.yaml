@@ -34,35 +34,54 @@ spec:
         # Resource limits for runners
         template:
           spec:
+            initContainers:
+              - name: init-dind-externals
+                image: ghcr.io/actions/actions-runner:latest
+                command:
+                  [
+                    "cp",
+                    "-r",
+                    "/home/runner/externalstmp/.",
+                    "/home/runner/externals/",
+                  ]
+                # Shared volume for binaries
+                volumeMounts:
+                  - name: dind-externals
+                    mountPath: /home/runner/externals
             containers:
               - name: runner
-                image: "ghcr.io/actions/runner:latest"
+                image: "ghcr.io/actions/actions-runner:latest"
                 command: ["/home/runner/run.sh"]
+                env:
+                  - name: DOCKER_HOST
+                    value: unix:///var/run/docker.sock
                 resources:
-                  limits:
-                    cpu: "4"
-                    memory: "8Gi"
-                  requests:
-                    cpu: "2"
-                    memory: "4Gi"
-              - name: dind
-                image: docker:dind
-                securityContext:
-                  privileged: true
-                resources:
-                  limits:
-                    cpu: "2"
-                    memory: "4Gi"
-                  requests:
-                    cpu: "1"
-                    memory: "2Gi"
+                  limits: {cpu: "4", memory: "8Gi"}
+                  requests: {cpu: "2", memory: "4Gi"}
                 volumeMounts:
                   - name: work
                     mountPath: /home/runner/_work
+                  - name: dind-sock # MOUNT THE SOCKET
+                    mountPath: /var/run
+              - name: dind
+                image: docker:dind
+                securityContext: {privileged: true}
+                resources:
+                  limits: {cpu: "2", memory: "4Gi"}
+                  requests: {cpu: "1", memory: "2Gi"}
+                volumeMounts:
+                  - name: work
+                    mountPath: /home/runner/_work
+                  - name: dind-sock # MOUNT THE SOCKET
+                    mountPath: /var/run
                   - name: docker-cache
                     mountPath: /var/lib/docker
             volumes:
               - name: work
+                emptyDir: {}
+              - name: dind-sock # DEFINE THE SOCKET VOLUME
+                emptyDir: {}
+              - name: dind-externals # SHARED BINARIES
                 emptyDir: {}
               - name: docker-cache
                 persistentVolumeClaim:
