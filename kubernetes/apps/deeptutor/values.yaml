@@ -45,6 +45,15 @@ app-template:
                 secretKeyRef:
                   name: deeptutor-secrets
                   key: PERPLEXITY_API_KEY
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    echo "Patching Next.js static files..."
+                    find /app/web/.next/static -type f -name "*.js" -exec sed -i 's|http://localhost:8001|https://deeptutor.local.bysliek.com|g' {} +
           probes:
             liveness:
               enabled: false
