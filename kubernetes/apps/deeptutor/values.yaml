@@ -106,7 +106,7 @@ app-template:
         - path: /app/web/.env.local
           subPath: .env.local
 
-  configMap:
+  configMaps:
     env-local:
       enabled: true
       data:
