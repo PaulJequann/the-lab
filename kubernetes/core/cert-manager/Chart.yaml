@@ -1,0 +1,9 @@
+apiVersion: v2
+name: cert-manager-wrapper
+description: Helm wrapper for cert-manager with local configuration
+type: application
+version: 1.0.0
+dependencies:
+  - name: cert-manager
+    version: "v1.18.2"
+    repository: "https://charts.jetstack.io"

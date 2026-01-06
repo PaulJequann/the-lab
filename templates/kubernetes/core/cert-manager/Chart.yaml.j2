@@ -1,0 +1,9 @@
+apiVersion: v2
+name: cert-manager-wrapper
+description: Helm wrapper for cert-manager with local configuration
+type: application
+version: 1.0.0
+dependencies:
+  - name: cert-manager
+    version: "{{ cert_manager_chart_version }}"
+    repository: "{{ cert_manager_chart_repo }}"

@@ -1,0 +1,21 @@
+# Values for cert-manager Helm wrapper
+# All cert-manager chart values must be nested under the 'cert-manager' key
+cert-manager:
+  global:
+    leaderElection:
+      namespace: cert-manager
+  config:
+    apiVersion: controller.config.cert-manager.io/v1alpha1
+    kind: ControllerConfiguration
+    enableGatewayAPI: true
+  extraArgs:
+    - "--dns01-recursive-nameservers-only"
+    - "--dns01-recursive-nameservers=1.1.1.1:53,8.8.8.8:53,9.9.9.9:53"
+    - "--dns01-check-retry-period=10s"
+    - "--max-concurrent-challenges=60"
+    - "--enable-certificate-owner-ref=true"
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    seccompProfile:
+      type: RuntimeDefault

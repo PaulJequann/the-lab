@@ -1,7 +1,7 @@
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: "{{ cert_manager_issuer_name }}"
+  name: "cloudflare-cluster-issuer"
   annotations:
     argocd.argoproj.io/sync-wave: "5"
     argocd.argoproj.io/sync-options: Validate=true
@@ -11,13 +11,13 @@ spec:
     # stage
     # server: https://acme-staging-v02.api.letsencrypt.org/directory
     # production
-    server: {{ cert_manager_acme_server }}
-    email: {{ cloudflare_email }}
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: pauljm12@gmail.com
     privateKeySecretRef:
-      name: "{{ cert_manager_issuer_name }}-private-key"
+      name: "cloudflare-cluster-issuer-private-key"
     solvers:
       - dns01:
           cloudflare:
             apiTokenSecretRef:
-              name: {{ cert_manager_cloudflare_api_secret_name }}
-              key: {{ cert_manager_cloudflare_api_secret_key }}
+              name: cloudflare-api-token
+              key: cloudflare-api-token
