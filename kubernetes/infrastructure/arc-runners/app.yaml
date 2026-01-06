@@ -37,14 +37,6 @@ spec:
             initContainers:
               - name: init-dind-externals
                 image: ghcr.io/actions/actions-runner:latest
-                command:
-                  [
-                    "cp",
-                    "-r",
-                    "/home/runner/externalstmp/.",
-                    "/home/runner/externals/",
-                  ]
-                # Shared volume for binaries
                 volumeMounts:
                   - name: dind-externals
                     mountPath: /home/runner/externals
