@@ -12,6 +12,7 @@
           env:
             TZ: America/New_York
             NEXT_PUBLIC_API_BASE_EXTERNAL: "https://{{deeptutor_domain}}"
+            NEXT_PUBLIC_API_BASE: "https://{{deeptutor_domain}}"
             # LLM Configuration
             LLM_BINDING: "{{ deeptutor_llm_binding }}"
             LLM_MODEL: "{{ deeptutor_llm_model }}"
@@ -98,17 +99,3 @@
       globalMounts:
         - path: /app/config
           readOnly: false
-    env-local:
-      enabled: true
-      type: configMap
-      name: deeptutor-env-local
-      globalMounts:
-        - path: /app/web/.env.local
-          subPath: .env.local
-
-  configMaps:
-    env-local:
-      enabled: true
-      data:
-        .env.local: |
-          NEXT_PUBLIC_API_BASE=https://{{deeptutor_domain}}
