@@ -15,14 +15,14 @@ app-template:
             NEXT_PUBLIC_API_BASE: "https://deeptutor.local.bysliek.com"
             # LLM Configuration
             LLM_BINDING: "openai"
-            LLM_MODEL: "gemini-2.0-flash"
-            LLM_BINDING_HOST: "https://generativelanguage.googleapis.com/v1beta/openai/"
+            LLM_MODEL: "gpt-4o-mini"
+            LLM_BINDING_HOST: "https://api.openai.com/v1/"
             DISABLE_SSL_VERIFY: "False"
             # Embedding Configuration
             EMBEDDING_BINDING: "openai"
             EMBEDDING_MODEL: "gemini-embedding-001"
-            EMBEDDING_BINDING_HOST: "https://generativelanguage.googleapis.com/v1beta/openai/"
-            EMBEDDING_DIM: "3072"
+            EMBEDDING_BINDING_HOST: "https://api.openai.com/v1/"
+            EMBEDDING_DIM: "1536"
             EMBEDDING_MAX_TOKENS: "2048"
             # Service Ports
             BACKEND_PORT: "8001"
