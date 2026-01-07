@@ -20,7 +20,7 @@ app-template:
             DISABLE_SSL_VERIFY: "False"
             # Embedding Configuration
             EMBEDDING_BINDING: "openai"
-            EMBEDDING_MODEL: "gemini-embedding-001"
+            EMBEDDING_MODEL: "text-embedding-3-small"
             EMBEDDING_BINDING_HOST: "https://api.openai.com/v1/"
             EMBEDDING_DIM: "1536"
             EMBEDDING_MAX_TOKENS: "2048"
