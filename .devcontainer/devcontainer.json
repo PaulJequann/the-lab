@@ -2,7 +2,10 @@
 // README at: https://github.com/devcontainers/templates/tree/main/src/ubuntu
 {
   "name": "The Lab - Ubuntu",
-  "image": "mcr.microsoft.com/devcontainers/python",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
   "remoteUser": "vscode",
   "updateRemoteUserUID": false,
   "features": {

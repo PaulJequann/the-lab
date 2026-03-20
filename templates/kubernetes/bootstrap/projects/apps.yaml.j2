@@ -5,25 +5,27 @@ metadata:
   namespace: argocd
 spec:
   description: User applications (nginx, whoami, custom apps)
-  
+
   sourceRepos:
     - https://github.com/PaulJequann/the-lab
     - https://charts.bitnami.com/bitnami
     - https://bjw-s-labs.github.io/helm-charts
     - ghcr.io/hkuds/deeptutor
-  
+
   destinations:
     - namespace: 'deeptutor'
+      server: https://kubernetes.default.svc
+    - namespace: '{{ homeassistant_namespace }}'
       server: https://kubernetes.default.svc
     - namespace: 'media'
       server: https://kubernetes.default.svc
     - namespace: 'app-*'  # Legacy pattern for backwards compatibility
       server: https://kubernetes.default.svc
-  
+
   clusterResourceWhitelist:
     - group: ''
       kind: Namespace
-  
+
   namespaceResourceWhitelist:
     - group: ''
       kind: Service
@@ -43,7 +45,7 @@ spec:
       kind: HTTPRoute
     - group: bitnami.com
       kind: SealedSecret
-  
+
   # Block dangerous configs
   namespaceResourceBlacklist:
     - group: ''

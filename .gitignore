@@ -5,6 +5,10 @@ Thumbs.db
 kubeconfig
 kubeconfig*
 
+.tldr/
+.vscode/
+.tldrignore
+
 config.yaml
 cloudflare-tunnel.json
 # vscode-sops

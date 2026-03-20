@@ -45,7 +45,7 @@ spec:
             annotations:
               cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
             hosts:
-              - host: sonarr.local.bysliek.com
+              - host: sonarr2.local.bysliek.com
                 paths:
                   - path: /
                     pathType: Prefix
@@ -55,7 +55,7 @@ spec:
             tls:
               - secretName: sonarr-tls
                 hosts:
-                  - sonarr.local.bysliek.com
+                  - sonarr2.local.bysliek.com
         persistence:
           config:
             enabled: true

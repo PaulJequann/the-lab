@@ -1,0 +1,75 @@
+---
+# Values for bjw-s app-template chart
+app-template:
+  controllers:
+    homeassistant:
+      type: statefulset
+      pod:
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+        nodeSelector:
+          kubernetes.io/hostname: gpop
+        securityContext:
+          fsGroup: 1000
+          runAsUser: 1000
+          runAsGroup: 1000
+      containers:
+        app:
+          image:
+            repository: lscr.io/linuxserver/homeassistant
+            tag: latest
+            pullPolicy: Always
+          env:
+            PUID: "1000"
+            PGID: "1000"
+            TZ: America/New_York
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+
+  service:
+    app:
+      type: ClusterIP
+      controller: homeassistant
+      ports:
+        http:
+          port: 8123
+
+  ingress:
+    app:
+      enabled: true
+      className: cilium
+      annotations:
+        cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+      hosts:
+        - host: homeassistant.local.bysliek.com
+          paths:
+            - path: /
+              pathType: Prefix
+              service:
+                identifier: app
+                port: http
+      tls:
+        - secretName: homeassistant-tls
+          hosts:
+            - homeassistant.local.bysliek.com
+
+  persistence:
+    config:
+      enabled: true
+      type: persistentVolumeClaim
+      storageClass: nfs-csi
+      accessMode: ReadWriteOnce
+      size: 10Gi
+      globalMounts:
+        - path: /config
+    dbus:
+      enabled: true
+      type: hostPath
+      hostPath: /run/dbus
+      hostPathType: Directory
+      globalMounts:
+        - path: /run/dbus
+          readOnly: true
