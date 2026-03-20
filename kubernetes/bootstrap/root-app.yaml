@@ -10,7 +10,7 @@ spec:
   project: default
   source:
     repoURL: "https://github.com/PaulJequann/the-lab"
-    targetRevision: "the-lab-v2"
+    targetRevision: "main"
     path: "kubernetes/bootstrap"
     directory:
       recurse: true
