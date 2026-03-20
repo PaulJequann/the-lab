@@ -9,10 +9,6 @@
         dnsPolicy: ClusterFirstWithHostNet
         nodeSelector:
           kubernetes.io/hostname: {{ homeassistant_node_name }}
-        securityContext:
-          fsGroup: 1000
-          runAsUser: 1000
-          runAsGroup: 1000
       containers:
         app:
           image:
