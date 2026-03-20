@@ -40,7 +40,7 @@ app-template:
       annotations:
         cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
       hosts:
-        - host: homeassistant.local.bysliek.com
+        - host: ha.local.bysliek.com
           paths:
             - path: /
               pathType: Prefix
@@ -50,7 +50,7 @@ app-template:
       tls:
         - secretName: homeassistant-tls
           hosts:
-            - homeassistant.local.bysliek.com
+            - ha.local.bysliek.com
 
   persistence:
     config:
