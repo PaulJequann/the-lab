@@ -8,6 +8,7 @@
       - nfs-common
       - postgresql
       - postgresql-client
+      - python3-psycopg2
       - redis-server
     state: present
 
@@ -54,63 +55,26 @@
 
 - name: Ensure PostgreSQL service is enabled and started
   ansible.builtin.systemd:
-    name: postgresql
+    name: "postgresql@{{ glitchtip_postgres_version }}-main"
     enabled: true
     state: started
 
-- name: Ensure GlitchTip state directory exists
-  ansible.builtin.file:
-    path: "{{ glitchtip_state_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0750"
-
 - name: Ensure GlitchTip PostgreSQL role exists
-  ansible.builtin.shell: |
-    if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ glitchtip_postgres_user }}'" | grep -q 1; then
-      printf "%s\n" "SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'role_name', :'role_password') \\gexec" | \
-        psql -v ON_ERROR_STOP=1 --set=role_name="{{ glitchtip_postgres_user }}" --set=role_password="$GLITCHTIP_POSTGRES_PASSWORD"
-    fi
-  args:
-    executable: /bin/bash
-  register: glitchtip_postgres_role_result
-  changed_when: "'CREATE ROLE' in glitchtip_postgres_role_result.stdout"
-  environment:
-    GLITCHTIP_POSTGRES_PASSWORD: "{{ glitchtip_postgres_password }}"
+  community.postgresql.postgresql_user:
+    name: "{{ glitchtip_postgres_user }}"
+    password: "{{ glitchtip_postgres_password }}"
+    role_attr_flags: LOGIN
+    state: present
+    login_unix_socket: /var/run/postgresql
   become_user: postgres
-  no_log: true
-
-- name: Record desired PostgreSQL password fingerprint
-  ansible.builtin.copy:
-    content: "{{ glitchtip_postgres_password | hash('sha256') }}\n"
-    dest: "{{ glitchtip_state_dir }}/postgres-password.sha256"
-    owner: root
-    group: root
-    mode: "0600"
-  register: glitchtip_postgres_password_fingerprint
-  no_log: true
-
-- name: Ensure GlitchTip PostgreSQL role password is current
-  ansible.builtin.shell: |
-    printf "%s\n" "SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'role_name', :'role_password') \\gexec" | \
-      psql -v ON_ERROR_STOP=1 --set=role_name="{{ glitchtip_postgres_user }}" --set=role_password="$GLITCHTIP_POSTGRES_PASSWORD"
-  args:
-    executable: /bin/bash
-  environment:
-    GLITCHTIP_POSTGRES_PASSWORD: "{{ glitchtip_postgres_password }}"
-  become_user: postgres
-  when: glitchtip_postgres_password_fingerprint.changed
   no_log: true
 
 - name: Ensure GlitchTip PostgreSQL database exists
-  ansible.builtin.shell: |
-    psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ glitchtip_postgres_db }}'" | grep -q 1 || \
-    psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"{{ glitchtip_postgres_db }}\" OWNER \"{{ glitchtip_postgres_user }}\";"
-  args:
-    executable: /bin/bash
-  register: glitchtip_postgres_db_result
-  changed_when: "'CREATE DATABASE' in glitchtip_postgres_db_result.stdout"
+  community.postgresql.postgresql_db:
+    name: "{{ glitchtip_postgres_db }}"
+    owner: "{{ glitchtip_postgres_user }}"
+    state: present
+    login_unix_socket: /var/run/postgresql
   become_user: postgres
 
 - name: Configure Redis bind address
