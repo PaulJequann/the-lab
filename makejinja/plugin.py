@@ -51,7 +51,13 @@ def build_helm_secrets_path(secret: str, key: str, gh_repo: str, gh_repo_branch:
     return f"secrets+age-import:///{secret}/{key}?{secret_url}"
 
 
-def seal_secret(name: str, namespace: str, data: dict[str, str], cert_path: str = ".sealed-secrets-public-cert.pem") -> str:
+def seal_secret(
+    name: str,
+    namespace: str,
+    data: dict[str, str],
+    cert_path: str = ".sealed-secrets-public-cert.pem",
+    annotations: dict[str, str] | None = None,
+) -> str:
     """
     Generates a SealedSecret manifest by calling the kubeseal CLI.
 
@@ -60,6 +66,7 @@ def seal_secret(name: str, namespace: str, data: dict[str, str], cert_path: str 
         namespace: The namespace for the Secret.
         data: A dictionary of key-value pairs for the Secret data.
         cert_path: The path to the Sealed Secrets public certificate.
+        annotations: Optional annotations to place on the Secret metadata before sealing.
 
     Returns:
         A string containing the YAML for the SealedSecret resource.
@@ -81,6 +88,8 @@ def seal_secret(name: str, namespace: str, data: dict[str, str], cert_path: str 
         "type": "Opaque",
         "stringData": data,  # Use stringData for automatic base64 encoding by Kubernetes
     }
+    if annotations:
+        secret_manifest["metadata"]["annotations"] = annotations
     secret_yaml_string = yaml.dump(secret_manifest)
 
     # 2. Prepare and run the kubeseal command
