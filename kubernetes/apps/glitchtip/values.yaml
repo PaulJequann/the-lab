@@ -65,3 +65,7 @@ glitchtip:
 
   postgresql:
     enabled: false
+
+  tests:
+    configuration:
+      enabled: false
