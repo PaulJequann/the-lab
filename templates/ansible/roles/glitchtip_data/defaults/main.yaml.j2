@@ -2,5 +2,9 @@
 glitchtip_backup_mount_point: /mnt/glitchtip-postgres-backups
 glitchtip_backup_schedule: '*-*-* 03:15:00'
 glitchtip_postgres_listen_addresses: 'localhost,{{ glitchtip_data_ip }}'
+glitchtip_postgres_db_encoding: UTF8
+glitchtip_postgres_db_template: template0
+glitchtip_postgres_db_lc_collate: C.UTF-8
+glitchtip_postgres_db_lc_ctype: C.UTF-8
 glitchtip_redis_bind: '127.0.0.1 {{ glitchtip_data_ip }}'
 glitchtip_redis_appendonly: 'yes'

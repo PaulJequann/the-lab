@@ -39,13 +39,14 @@ spec:
               password = os.environ["GLITCHTIP_ADMIN_PASSWORD"]
 
               user, _ = User.objects.get_or_create(
-                  username=username,
+                  email=email,
                   defaults={
-                      "email": email,
+                      "name": username,
                       "is_staff": True,
                       "is_superuser": True,
                   },
               )
+              user.name = username
               user.email = email
               user.is_staff = True
               user.is_superuser = True

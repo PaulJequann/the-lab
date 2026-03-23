@@ -62,17 +62,47 @@
 - name: Ensure GlitchTip PostgreSQL role exists
   community.postgresql.postgresql_user:
     name: "{{ glitchtip_postgres_user }}"
-    password: "{{ glitchtip_postgres_password }}"
     role_attr_flags: LOGIN
     state: present
     login_unix_socket: /var/run/postgresql
   become_user: postgres
   no_log: true
 
+- name: Ensure GlitchTip PostgreSQL role password is current
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import os
+    import psycopg2
+    from psycopg2 import sql
+
+    conn = psycopg2.connect(dbname="postgres", user="postgres")
+    conn.autocommit = True
+
+    with conn, conn.cursor() as cur:
+        cur.execute(
+            sql.SQL("ALTER ROLE {} WITH LOGIN PASSWORD %s").format(
+                sql.Identifier(os.environ["GLITCHTIP_POSTGRES_USER"])
+            ),
+            (os.environ["GLITCHTIP_POSTGRES_PASSWORD"],),
+        )
+    PY
+  args:
+    executable: /bin/bash
+  environment:
+    GLITCHTIP_POSTGRES_USER: "{{ glitchtip_postgres_user }}"
+    GLITCHTIP_POSTGRES_PASSWORD: "{{ glitchtip_postgres_password }}"
+  become_user: postgres
+  changed_when: false
+  no_log: true
+
 - name: Ensure GlitchTip PostgreSQL database exists
   community.postgresql.postgresql_db:
     name: "{{ glitchtip_postgres_db }}"
     owner: "{{ glitchtip_postgres_user }}"
+    encoding: "{{ glitchtip_postgres_db_encoding }}"
+    template: "{{ glitchtip_postgres_db_template }}"
+    lc_collate: "{{ glitchtip_postgres_db_lc_collate }}"
+    lc_ctype: "{{ glitchtip_postgres_db_lc_ctype }}"
     state: present
     login_unix_socket: /var/run/postgresql
   become_user: postgres
