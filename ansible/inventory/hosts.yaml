@@ -15,6 +15,11 @@ all:
           ansible_host: 10.0.10.25
           device_model: m73
           network_interface: eno1
+    services:
+      hosts:
+        glitchtip-data:
+          ansible_host: 10.0.10.83
+          device_model: lxc
     workers:
       hosts:
         gpop:

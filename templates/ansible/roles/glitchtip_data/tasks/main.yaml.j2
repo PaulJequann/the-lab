@@ -1,0 +1,186 @@
+---
+{% raw %}
+- name: Install GlitchTip data host packages
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - acl
+      - nfs-common
+      - postgresql
+      - postgresql-client
+      - redis-server
+    state: present
+
+- name: Ensure PostgreSQL backup mount point exists
+  ansible.builtin.file:
+    path: "{{ glitchtip_backup_mount_point }}"
+    state: directory
+    mode: "0755"
+  when: glitchtip_backup_enabled | bool
+
+- name: Mount PostgreSQL backup export
+  ansible.posix.mount:
+    path: "{{ glitchtip_backup_mount_point }}"
+    src: "{{ glitchtip_backup_nfs_server }}:{{ glitchtip_backup_nfs_path }}"
+    fstype: nfs
+    opts: rw,_netdev,nfsvers=4.1
+    state: mounted
+  when: glitchtip_backup_enabled | bool
+
+- name: Discover PostgreSQL cluster version
+  ansible.builtin.command: pg_lsclusters --no-header
+  register: glitchtip_pg_lsclusters
+  changed_when: false
+
+- name: Set PostgreSQL facts
+  ansible.builtin.set_fact:
+    glitchtip_postgres_version: "{{ glitchtip_pg_lsclusters.stdout_lines[0].split()[0] }}"
+    glitchtip_postgres_config_dir: "/etc/postgresql/{{ glitchtip_pg_lsclusters.stdout_lines[0].split()[0] }}/main"
+
+- name: Configure PostgreSQL listen addresses
+  ansible.builtin.lineinfile:
+    path: "{{ glitchtip_postgres_config_dir }}/postgresql.conf"
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '{{ glitchtip_postgres_listen_addresses }}'"
+  notify: Restart postgresql
+
+- name: Allow cluster subnet into PostgreSQL
+  ansible.builtin.blockinfile:
+    path: "{{ glitchtip_postgres_config_dir }}/pg_hba.conf"
+    marker: "# {mark} ANSIBLE MANAGED GLITCHTIP"
+    block: |
+      host    {{ glitchtip_postgres_db }}    {{ glitchtip_postgres_user }}    {{ node_network }}    scram-sha-256
+  notify: Restart postgresql
+
+- name: Ensure PostgreSQL service is enabled and started
+  ansible.builtin.systemd:
+    name: postgresql
+    enabled: true
+    state: started
+
+- name: Ensure GlitchTip state directory exists
+  ansible.builtin.file:
+    path: "{{ glitchtip_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Ensure GlitchTip PostgreSQL role exists
+  ansible.builtin.shell: |
+    if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ glitchtip_postgres_user }}'" | grep -q 1; then
+      printf "%s\n" "SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'role_name', :'role_password') \\gexec" | \
+        psql -v ON_ERROR_STOP=1 --set=role_name="{{ glitchtip_postgres_user }}" --set=role_password="$GLITCHTIP_POSTGRES_PASSWORD"
+    fi
+  args:
+    executable: /bin/bash
+  register: glitchtip_postgres_role_result
+  changed_when: "'CREATE ROLE' in glitchtip_postgres_role_result.stdout"
+  environment:
+    GLITCHTIP_POSTGRES_PASSWORD: "{{ glitchtip_postgres_password }}"
+  become_user: postgres
+  no_log: true
+
+- name: Record desired PostgreSQL password fingerprint
+  ansible.builtin.copy:
+    content: "{{ glitchtip_postgres_password | hash('sha256') }}\n"
+    dest: "{{ glitchtip_state_dir }}/postgres-password.sha256"
+    owner: root
+    group: root
+    mode: "0600"
+  register: glitchtip_postgres_password_fingerprint
+  no_log: true
+
+- name: Ensure GlitchTip PostgreSQL role password is current
+  ansible.builtin.shell: |
+    printf "%s\n" "SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'role_name', :'role_password') \\gexec" | \
+      psql -v ON_ERROR_STOP=1 --set=role_name="{{ glitchtip_postgres_user }}" --set=role_password="$GLITCHTIP_POSTGRES_PASSWORD"
+  args:
+    executable: /bin/bash
+  environment:
+    GLITCHTIP_POSTGRES_PASSWORD: "{{ glitchtip_postgres_password }}"
+  become_user: postgres
+  when: glitchtip_postgres_password_fingerprint.changed
+  no_log: true
+
+- name: Ensure GlitchTip PostgreSQL database exists
+  ansible.builtin.shell: |
+    psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ glitchtip_postgres_db }}'" | grep -q 1 || \
+    psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"{{ glitchtip_postgres_db }}\" OWNER \"{{ glitchtip_postgres_user }}\";"
+  args:
+    executable: /bin/bash
+  register: glitchtip_postgres_db_result
+  changed_when: "'CREATE DATABASE' in glitchtip_postgres_db_result.stdout"
+  become_user: postgres
+
+- name: Configure Redis bind address
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^bind '
+    line: "bind {{ glitchtip_redis_bind }}"
+  notify: Restart redis
+
+- name: Configure Redis port
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^port '
+    line: "port {{ glitchtip_redis_port }}"
+  notify: Restart redis
+
+- name: Enforce Redis protected mode
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^protected-mode '
+    line: 'protected-mode yes'
+  notify: Restart redis
+
+- name: Enable Redis appendonly persistence
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^appendonly '
+    line: "appendonly {{ glitchtip_redis_appendonly }}"
+  notify: Restart redis
+
+- name: Configure Redis password
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^#?requirepass '
+    line: "requirepass {{ glitchtip_redis_password }}"
+  notify: Restart redis
+
+- name: Ensure Redis service is enabled and started
+  ansible.builtin.systemd:
+    name: redis-server
+    enabled: true
+    state: started
+
+- name: Install PostgreSQL backup script
+  ansible.builtin.template:
+    src: postgresql-backup.sh
+    dest: /usr/local/bin/glitchtip-postgresql-backup.sh
+    mode: '0750'
+  when: glitchtip_backup_enabled | bool
+
+- name: Install PostgreSQL backup service
+  ansible.builtin.template:
+    src: postgresql-backup.service
+    dest: /etc/systemd/system/glitchtip-postgresql-backup.service
+    mode: '0644'
+  notify: Reload systemd
+  when: glitchtip_backup_enabled | bool
+
+- name: Install PostgreSQL backup timer
+  ansible.builtin.template:
+    src: postgresql-backup.timer
+    dest: /etc/systemd/system/glitchtip-postgresql-backup.timer
+    mode: '0644'
+  notify: Reload systemd
+  when: glitchtip_backup_enabled | bool
+
+- name: Enable PostgreSQL backup timer
+  ansible.builtin.systemd:
+    name: glitchtip-postgresql-backup.timer
+    enabled: true
+    state: started
+  when: glitchtip_backup_enabled | bool
+{% endraw %}

@@ -9,6 +9,11 @@ all:
           device_model: {{ node.device_model }}
           network_interface: {{ node.network_interface }}
         {% endfor %}
+    services:
+      hosts:
+        {{ glitchtip_data_hostname }}:
+          ansible_host: {{ glitchtip_data_ip }}
+          device_model: lxc
     {{ agent_group }}:
       hosts:
         {% for node in node_inventory if not node.controller %}

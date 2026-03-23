@@ -1,0 +1,10 @@
+{% raw %}
+[Unit]
+Description=GlitchTip PostgreSQL backup job
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/glitchtip-postgresql-backup.sh
+{% endraw %}

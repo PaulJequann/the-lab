@@ -43,3 +43,21 @@ tasks:
     dir: "{{.TERRAFORM_DIR}}/kubernetes-nodes"
     cmds:
       - terraform apply {{.CLI_ARGS}}
+
+  init-glitchtip-data:
+    desc: Initialize terraform for the GlitchTip data host
+    dir: "{{.TERRAFORM_DIR}}/glitchtip-data"
+    cmds:
+      - terraform init {{.CLI_ARGS}}
+
+  plan-glitchtip-data:
+    desc: Show the terraform plan for the GlitchTip data host
+    dir: "{{.TERRAFORM_DIR}}/glitchtip-data"
+    cmds:
+      - terraform plan {{.CLI_ARGS}}
+
+  apply-glitchtip-data:
+    desc: Apply terraform for the GlitchTip data host
+    dir: "{{.TERRAFORM_DIR}}/glitchtip-data"
+    cmds:
+      - terraform apply --auto-approve {{.CLI_ARGS}}

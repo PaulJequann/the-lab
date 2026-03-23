@@ -1,0 +1,11 @@
+---
+- name: Configure GlitchTip data host
+  hosts: services
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../group_vars/services.yaml
+    - ../group_vars/services.sops.yaml
+
+  roles:
+    - glitchtip_data

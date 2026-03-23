@@ -1,0 +1,23 @@
+glitchtip_postgres_password: ENC[AES256_GCM,data:3FFxEsL0apg=,iv:Kswumk0ygOFMln6SM1zS/SsqgBHVhI5POad++y1LR7I=,tag:oS4idAEF4WEQXNpCOBiuAg==,type:str]
+glitchtip_redis_password: ENC[AES256_GCM,data:ZY7jmQ4p8og=,iv:0e3M3GcaDcDhN33dLpQkYkGSlhFsim6JLuJYsuOmoj0=,tag:nOCthQPyXg2YKkLSgMRrRQ==,type:str]
+glitchtip_secret_key: ENC[AES256_GCM,data:2AlJNyQ88GG6Ow==,iv:ObJEeyapv+rOoWu6ji4vEjaw/66v3OVmQXrIRXZHxrw=,tag:PYFZG3Tneru4pF8WKXtj6w==,type:str]
+glitchtip_email_url: ENC[AES256_GCM,data:bvabvI174KWkspEdwnY=,iv:2WD0gHk0eLkvSjRiPyCORcDLASimTrACyoHR+icFcCQ=,tag:1jq0HUvXmPiKCADGJZMzSA==,type:str]
+glitchtip_default_from_email: ENC[AES256_GCM,data:tBPYhgCMc2fNCQkgBme8SQMdQV+v,iv:mNwwSoGyKUUWuDEXcmQ9vJP/hlK86BXe6BLQ0RG+TaA=,tag:MYnPvTDPCeSWYObpeT4grw==,type:str]
+glitchtip_admin_username: ENC[AES256_GCM,data:rSqbr8w=,iv:zppgOxy+P2YoTuaKt4u/00YRfuxv8XS7gltknxsVNBM=,tag:NjuGqKLsCKsp1MITWARuUg==,type:str]
+glitchtip_admin_email: ENC[AES256_GCM,data:fveJn4P1Vf/z4oTLOdQIMQg=,iv:lGuvLcinhKk7SbDYQHYWHa9eKbFhrA+eHF9+Y3pQB+o=,tag:xkup2dp/sB1XX8Dr9JvR8w==,type:str]
+glitchtip_admin_password: ENC[AES256_GCM,data:OdTHYpWrZRHcesqvuA==,iv:0FZXbO4Bo56gcGu4gGhTZtdCCeMN2cxpTnYuLlz9K+M=,tag:mMucTwAB96sdtua6c2YKXA==,type:str]
+sops:
+    age:
+        - recipient: age1n5l0gxf0mjdhnpq6v6dx22vj7lctv7xsyz5eyf7ktq8284rlhs3speeycx
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBQcHNpbUpTR3RmNDBsSTNH
+            azJRWTVWcUcxb05qUE1PcExUMWVMTHVYQXlRCmVGcnZHMjNlR1hEMi9QWll2ZjJY
+            S0RQNUJENEpaWlJIQ01rS3prcmtpbFUKLS0tIEdyU05LbEFJblA5aFVoYjlmQldZ
+            dUN3dHV4OUNGVVBhVFNyckhyVytSNkEKpNXfk9kVT1h99eisA3gFnY1H8pENgiCE
+            L2/sXVvNNX53yaw815ucseEVARPxjFZkZkoixK+C6sEXMGzIGPGu1Q==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-03-22T20:24:34Z"
+    mac: ENC[AES256_GCM,data:uc3eZeOwuXmfZOyKCGms2pyvzrG0v2Gf1Ww6L5qB6eb9BizxWe5SBMPJ8ejQtgHMh8Tl51TbsbibPLQHQmjivWhMvMgf7Wz9k594whLem5Jfk5mK+aNJxsZBqcoryNA7OsUYi1xoAhZU4Q3D3yeJbge6v+52M1GB+xLt62UWfNQ=,iv:Os7NuspsLpBt2sJWLg65HoH8iU2uQInSzkVyB5AXW0s=,tag:EnoNhnEgdF4DvNJrxFBL3g==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.12.2

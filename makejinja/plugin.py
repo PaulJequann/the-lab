@@ -1,6 +1,6 @@
 import bcrypt
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 import makejinja
 import subprocess
 import yaml
@@ -12,6 +12,11 @@ def bcrypt_password(value: str) -> str:
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(value.encode('utf-8'), salt)
     return hashed.decode('utf-8')
+
+
+def urlencode(value: str) -> str:
+    """Percent-encode a string for safe embedding in URLs."""
+    return quote(value, safe="")
 
 
 def build_helm_secrets_path(secret: str, key: str, gh_repo: str, gh_repo_branch: str, app_repo_path: str, secret_file_name: str) -> str:
@@ -116,7 +121,7 @@ class Plugin(makejinja.plugin.Plugin):
 
     def filters(self) -> makejinja.plugin.Filters:
         # Only the bcrypt_password filter is registered
-        return [bcrypt_password]
+        return [bcrypt_password, urlencode]
 
     def globals(self) -> list[Callable[..., Any]]:
         # This method registers functions that can be called directly in templates.

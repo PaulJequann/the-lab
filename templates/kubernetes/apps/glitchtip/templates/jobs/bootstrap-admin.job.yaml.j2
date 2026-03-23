@@ -1,0 +1,55 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: glitchtip-bootstrap-admin
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: glitchtip-bootstrap-admin
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap-admin
+          image: glitchtip/glitchtip:6.0.10
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: glitchtip-secrets
+          env:
+            - name: GLITCHTIP_DOMAIN
+              value: "https://{{ glitchtip_domain }}"
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              python manage.py shell <<'PY'
+              import os
+              from django.contrib.auth import get_user_model
+
+              User = get_user_model()
+              username = os.environ["GLITCHTIP_ADMIN_USERNAME"]
+              email = os.environ["GLITCHTIP_ADMIN_EMAIL"]
+              password = os.environ["GLITCHTIP_ADMIN_PASSWORD"]
+
+              user, _ = User.objects.get_or_create(
+                  username=username,
+                  defaults={
+                      "email": email,
+                      "is_staff": True,
+                      "is_superuser": True,
+                  },
+              )
+              user.email = email
+              user.is_staff = True
+              user.is_superuser = True
+              user.set_password(password)
+              user.save()
+              print(f"bootstrap admin ready: {username}")
+              PY

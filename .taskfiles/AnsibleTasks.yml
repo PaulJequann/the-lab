@@ -121,6 +121,18 @@ tasks:
     cmds:
       - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml -u pj -K -e "ansible_user=pj" {{.CLI_ARGS}}
 
+  bootstrap-glitchtip-data:
+    desc: Bootstrap the GlitchTip data host with the ansible user and base settings
+    dir: "{{.ANSIBLE_DIR}}"
+    cmds:
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml --limit services -u root -e "ansible_user=root" {{.CLI_ARGS}}
+
+  configure-glitchtip-data:
+    desc: Configure PostgreSQL and Redis on the GlitchTip data host
+    dir: "{{.ANSIBLE_DIR}}"
+    cmds:
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/glitchtip-data.yml --limit services {{.CLI_ARGS}}
+
   get-kubeconfig:
     desc: Get the kubeconfig file from the k3s cluster
     dir: "{{.ANSIBLE_DIR}}"

@@ -1,0 +1,67 @@
+---
+glitchtip:
+  image:
+    repository: glitchtip/glitchtip
+    tag: 6.0.10
+
+  extraEnvVars:
+    - name: EMAIL_URL
+      valueFrom:
+        secretKeyRef:
+          name: glitchtip-secrets
+          key: EMAIL_URL
+    - name: DEFAULT_FROM_EMAIL
+      valueFrom:
+        secretKeyRef:
+          name: glitchtip-secrets
+          key: DEFAULT_FROM_EMAIL
+
+  glitchtip:
+    domain: "https://{{ glitchtip_domain }}"
+    existingSecret: glitchtip-secrets
+    existingSecretKey: SECRET_KEY
+    database:
+      existingSecret: glitchtip-secrets
+      existingSecretKey: DATABASE_URL
+    maintenanceDatabase:
+      existingSecret: glitchtip-secrets
+      existingSecretKey: MAINTENANCE_DATABASE_URL
+    valkey:
+      existingSecret: glitchtip-secrets
+      existingSecretKey: REDIS_URL
+
+  migrationJob:
+    enabled: true
+    database:
+      existingSecret: glitchtip-secrets
+      existingSecretKey: MAINTENANCE_DATABASE_URL
+
+  web:
+    replicaCount: 1
+    ingress:
+      enabled: true
+      className: cilium
+      annotations:
+        cert-manager.io/cluster-issuer: {{ cert_manager_issuer_name }}
+      hosts:
+        - host: {{ glitchtip_domain }}
+          paths:
+            - path: /
+              pathType: Prefix
+      tls:
+        - secretName: glitchtip-tls
+          hosts:
+            - {{ glitchtip_domain }}
+
+  worker:
+    enabled: true
+    replicaCount: 1
+    database:
+      existingSecret: glitchtip-secrets
+      existingSecretKey: MAINTENANCE_DATABASE_URL
+
+  valkey:
+    enabled: false
+
+  postgresql:
+    enabled: false

@@ -1,0 +1,11 @@
+
+[Unit]
+Description=Nightly GlitchTip PostgreSQL backups
+
+[Timer]
+OnCalendar={{ glitchtip_backup_schedule }}
+Persistent=true
+Unit=glitchtip-postgresql-backup.service
+
+[Install]
+WantedBy=timers.target

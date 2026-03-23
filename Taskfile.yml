@@ -204,3 +204,35 @@ tasks:
       - test -f config.yaml
       - which curl
       - which yq
+
+  deploy-glitchtip-data:
+    desc: Render config, provision the GlitchTip data host, and configure PostgreSQL and Redis
+    cmds:
+      - task: configure
+      - task: terraform:init-glitchtip-data
+      - task: terraform:apply-glitchtip-data
+      - task: ansible:bootstrap-glitchtip-data
+      - task: ansible:configure-glitchtip-data
+    preconditions:
+      - sh: test "$(yq eval '.proxmox_api_url' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_url in config.yaml"
+      - sh: test "$(yq eval '.proxmox_api_token_id' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_token_id in config.yaml"
+      - sh: test "$(yq eval '.proxmox_lxc_template_name' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_lxc_template_name in config.yaml"
+      - sh: test -z "$(yq eval '.proxmox_lxc_template_name' config.yaml | grep '\.tmp\.')"
+        msg: "proxmox_lxc_template_name must be the final Proxmox template volume, not a temporary .tmp download path"
+      - sh: yq eval '.proxmox_lxc_template_name' config.yaml | grep -q ':vztmpl/'
+        msg: "proxmox_lxc_template_name must look like <storage>:vztmpl/<template-file>.tar.zst"
+      - sh: test "$(yq eval '.proxmox_api_token_secret' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_token_secret in config.yaml"
+      - sh: test "$(yq eval '.proxmox_lxc_template_name' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_lxc_template_name in config.yaml"
+      - sh: test "$(yq eval '.proxmox_lxc_initial_password' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_lxc_initial_password in config.yaml"
+      - sh: test "$(yq eval '.unifi_api_url' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_api_url in config.yaml"
+      - sh: test "$(yq eval '.unifi_username' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_username in config.yaml"
+      - sh: test "$(yq eval '.unifi_password' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_password in config.yaml"

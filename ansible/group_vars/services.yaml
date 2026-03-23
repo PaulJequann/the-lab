@@ -1,0 +1,12 @@
+---
+glitchtip_data_hostname: glitchtip-data
+glitchtip_data_ip: 10.0.10.83
+glitchtip_postgres_db: glitchtip
+glitchtip_postgres_user: glitchtip
+glitchtip_postgres_port: 5432
+glitchtip_redis_port: 6379
+glitchtip_backup_enabled: False
+glitchtip_backup_nfs_server: truenas.local.bysliek.com
+glitchtip_backup_nfs_path: /mnt/k8s-ssd-pool/glitchtip-postgres-backups
+glitchtip_backup_retention_days: 14
+node_network: 10.0.10.0/24
