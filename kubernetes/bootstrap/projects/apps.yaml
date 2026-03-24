@@ -32,6 +32,8 @@ spec:
     - group: ''
       kind: Service
     - group: ''
+      kind: ServiceAccount
+    - group: ''
       kind: ConfigMap
     - group: ''
       kind: Secret
@@ -43,6 +45,10 @@ spec:
       kind: StatefulSet
     - group: batch
       kind: Job
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
     - group: networking.k8s.io
       kind: Ingress
     - group: gateway.networking.k8s.io
