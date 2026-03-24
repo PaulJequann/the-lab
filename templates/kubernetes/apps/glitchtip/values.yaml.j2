@@ -15,6 +15,37 @@ glitchtip:
         secretKeyRef:
           name: glitchtip-secrets
           key: DEFAULT_FROM_EMAIL
+    - name: GLITCHTIP_ENABLE_MCP
+      value: "{{ 'true' if glitchtip_enable_mcp else 'false' }}"
+    - name: GLITCHTIP_ENABLE_LOGS
+      value: "{{ 'true' if glitchtip_enable_logs else 'false' }}"
+    - name: GLITCHTIP_UPTIME_ALLOW_PRIVATE_IPS
+      value: "{{ 'true' if glitchtip_uptime_allow_private_ips else 'false' }}"
+    - name: GLITCHTIP_RETENTION_DAYS
+      value: "{{ glitchtip_retention_days }}"
+    - name: GLITCHTIP_TRANSACTION_RETENTION_DAYS
+      value: "{{ glitchtip_transaction_retention_days }}"
+    - name: GLITCHTIP_LOG_RETENTION_DAYS
+      value: "{{ glitchtip_log_retention_days }}"
+    - name: GLITCHTIP_FILE_RETENTION_DAYS
+      value: "{{ glitchtip_file_retention_days }}"
+    - name: GLITCHTIP_ENABLE_DUCKDB
+      value: "{{ 'true' if glitchtip_enable_duckdb else 'false' }}"
+    - name: GLITCHTIP_COLD_STORAGE_DIR
+      value: "{{ glitchtip_duckdb_cold_storage_dir }}"
+    - name: DUCKDB_MEMORY_LIMIT
+      value: "{{ glitchtip_duckdb_memory_limit }}"
+    - name: DUCKDB_TEMP_DIRECTORY
+      value: "{{ glitchtip_duckdb_temp_directory }}"
+
+  extraVolumes:
+    - name: duckdb-cold-storage
+      persistentVolumeClaim:
+        claimName: glitchtip-duckdb
+
+  extraVolumeMounts:
+    - name: duckdb-cold-storage
+      mountPath: {{ glitchtip_duckdb_cold_storage_dir }}
 
   glitchtip:
     domain: "https://{{ glitchtip_domain }}"

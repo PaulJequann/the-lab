@@ -14,6 +14,7 @@ spec:
       labels:
         app.kubernetes.io/name: glitchtip-bootstrap-admin
     spec:
+      serviceAccountName: glitchtip-bootstrap
       restartPolicy: OnFailure
       containers:
         - name: bootstrap-admin
@@ -25,18 +26,57 @@ spec:
           env:
             - name: GLITCHTIP_DOMAIN
               value: "https://{{ glitchtip_domain }}"
+            - name: GLITCHTIP_NAMESPACE
+              value: "{{ glitchtip_namespace }}"
           command:
             - /bin/sh
             - -ec
             - |
               python manage.py shell <<'PY'
+              import base64
+              import json
               import os
+              from urllib import error, request
+              from uuid import UUID
+
+              from apps.api_tokens.models import APIToken
+              from apps.organizations_ext.models import Organization
+              from apps.projects.models import Project, ProjectKey
               from django.contrib.auth import get_user_model
 
               User = get_user_model()
               username = os.environ["GLITCHTIP_ADMIN_USERNAME"]
               email = os.environ["GLITCHTIP_ADMIN_EMAIL"]
               password = os.environ["GLITCHTIP_ADMIN_PASSWORD"]
+              organization_name = os.environ["GLITCHTIP_BOOTSTRAP_ORGANIZATION_NAME"]
+              organization_slug = os.environ["GLITCHTIP_BOOTSTRAP_ORGANIZATION_SLUG"]
+              project_name = os.environ["GLITCHTIP_BOOTSTRAP_PROJECT_NAME"]
+              project_slug = os.environ["GLITCHTIP_BOOTSTRAP_PROJECT_SLUG"]
+              project_platform = os.environ["GLITCHTIP_BOOTSTRAP_PROJECT_PLATFORM"]
+              project_key_name = os.environ["GLITCHTIP_BOOTSTRAP_PROJECT_KEY_NAME"]
+              project_key_public_key = UUID(os.environ["GLITCHTIP_BOOTSTRAP_PROJECT_KEY_PUBLIC_KEY"])
+              token_label = os.environ["GLITCHTIP_BOOTSTRAP_MCP_TOKEN_LABEL"]
+              token_value = os.environ["GLITCHTIP_BOOTSTRAP_MCP_TOKEN"]
+              namespace = os.environ["GLITCHTIP_NAMESPACE"]
+              secret_name = "glitchtip-bootstrap-artifacts"
+              desired_permissions = [
+                  "project:read",
+                  "project:write",
+                  "project:admin",
+                  "project:releases",
+                  "team:read",
+                  "team:write",
+                  "team:admin",
+                  "event:read",
+                  "event:write",
+                  "event:admin",
+                  "org:read",
+                  "org:write",
+                  "org:admin",
+                  "member:read",
+                  "member:write",
+                  "member:admin",
+              ]
 
               user, _ = User.objects.get_or_create(
                   email=email,
@@ -52,5 +92,134 @@ spec:
               user.is_superuser = True
               user.set_password(password)
               user.save()
+
+              organization, _ = Organization.objects.get_or_create(
+                  slug=organization_slug,
+                  defaults={"name": organization_name},
+              )
+              if organization.name != organization_name:
+                  organization.name = organization_name
+                  organization.save(update_fields=["name"])
+              if not organization.users.filter(pk=user.pk).exists():
+                  organization.add_user(user)
+
+              project, _ = Project.objects.get_or_create(
+                  organization=organization,
+                  slug=project_slug,
+                  defaults={
+                      "name": project_name,
+                      "platform": project_platform,
+                  },
+              )
+              project_updates = []
+              if project.name != project_name:
+                  project.name = project_name
+                  project_updates.append("name")
+              if project.platform != project_platform:
+                  project.platform = project_platform
+                  project_updates.append("platform")
+              if project_updates:
+                  project.save(update_fields=project_updates)
+
+              project_key, _ = ProjectKey.objects.get_or_create(
+                  project=project,
+                  public_key=project_key_public_key,
+                  defaults={
+                      "name": project_key_name,
+                      "is_active": True,
+                  },
+              )
+              project_key_updates = []
+              if project_key.name != project_key_name:
+                  project_key.name = project_key_name
+                  project_key_updates.append("name")
+              if not project_key.is_active:
+                  project_key.is_active = True
+                  project_key_updates.append("is_active")
+              if project_key_updates:
+                  project_key.save(update_fields=project_key_updates)
+
+              api_token, _ = APIToken.objects.get_or_create(
+                  token=token_value,
+                  defaults={
+                      "user": user,
+                      "label": token_label,
+                  },
+              )
+              api_token_updates = []
+              if api_token.user_id != user.id:
+                  api_token.user = user
+                  api_token_updates.append("user")
+              if api_token.label != token_label:
+                  api_token.label = token_label
+                  api_token_updates.append("label")
+              if api_token_updates:
+                  api_token.save(update_fields=api_token_updates)
+              api_token.add_permissions(desired_permissions)
+
+              artifacts = {
+                  "GLITCHTIP_ORGANIZATION_SLUG": organization.slug,
+                  "GLITCHTIP_PROJECT_SLUG": project.slug,
+                  "GLITCHTIP_PROJECT_ID": str(project.id),
+                  "GLITCHTIP_PROJECT_KEY": project_key.public_key_hex,
+                  "GLITCHTIP_PROJECT_DSN": project_key.get_dsn(),
+                  "GLITCHTIP_API_TOKEN": api_token.token,
+              }
+
+              api_host = os.environ["KUBERNETES_SERVICE_HOST"]
+              api_port = os.environ.get("KUBERNETES_SERVICE_PORT_HTTPS", "443")
+              token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+              ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+              with open(token_path, encoding="utf-8") as handle:
+                  kube_token = handle.read().strip()
+
+              def kube_request(url, method, payload=None):
+                  req = request.Request(url, method=method)
+                  req.add_header("Authorization", f"Bearer {kube_token}")
+                  req.add_header("Accept", "application/json")
+                  if payload is not None:
+                      body = json.dumps(payload).encode("utf-8")
+                      req.add_header("Content-Type", "application/json")
+                  else:
+                      body = None
+                  return request.urlopen(req, data=body, cafile=ca_path)
+
+              secret_payload = {
+                  "apiVersion": "v1",
+                  "kind": "Secret",
+                  "metadata": {
+                      "name": secret_name,
+                      "namespace": namespace,
+                      "labels": {
+                          "app.kubernetes.io/name": "glitchtip-bootstrap-artifacts",
+                          "app.kubernetes.io/managed-by": "glitchtip-bootstrap-admin",
+                      },
+                  },
+                  "type": "Opaque",
+                  "data": {
+                      key: base64.b64encode(value.encode("utf-8")).decode("ascii")
+                      for key, value in artifacts.items()
+                  },
+              }
+
+              secret_url = f"https://{api_host}:{api_port}/api/v1/namespaces/{namespace}/secrets/{secret_name}"
+              collection_url = f"https://{api_host}:{api_port}/api/v1/namespaces/{namespace}/secrets"
+
+              try:
+                  with kube_request(secret_url, "GET") as response:
+                      current = json.loads(response.read().decode("utf-8"))
+                  secret_payload["metadata"]["resourceVersion"] = current["metadata"]["resourceVersion"]
+                  with kube_request(secret_url, "PUT", secret_payload):
+                      pass
+              except error.HTTPError as exc:
+                  if exc.code != 404:
+                      raise
+                  with kube_request(collection_url, "POST", secret_payload):
+                      pass
+
               print(f"bootstrap admin ready: {username}")
+              print(f"bootstrap organization ready: {organization.slug}")
+              print(f"bootstrap project ready: {project.slug} ({project.id})")
+              print(f"bootstrap DSN ready: {project_key.get_dsn()}")
               PY

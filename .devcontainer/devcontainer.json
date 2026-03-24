@@ -38,12 +38,17 @@
     "source=${localEnv:HOME}/.kube,target=/home/vscode/.kube,type=bind,consistency=cached",
     // Claude Code config persistence
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    // GitHub Copilot CLI config persistence
+    "source=${localEnv:HOME}/.copilot,target=/home/vscode/.copilot,type=bind,consistency=cached",
     // OpenCode config persistence
     "source=${localEnv:HOME}/.opencode,target=/home/vscode/.opencode,type=bind,consistency=cached"
   ],
   "remoteEnv": {
     "SOPS_AGE_KEY_FILE": "/home/vscode/.config/sops/age/keys.txt",
     "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+    "COPILOT_GITHUB_TOKEN": "${localEnv:COPILOT_GITHUB_TOKEN}",
+    "GH_TOKEN": "${localEnv:GH_TOKEN}",
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
     "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
   },
   "postCreateCommand": "bash ./.devcontainer/postCreateCommand.sh",

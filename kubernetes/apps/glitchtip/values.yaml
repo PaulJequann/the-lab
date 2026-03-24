@@ -15,6 +15,37 @@ glitchtip:
         secretKeyRef:
           name: glitchtip-secrets
           key: DEFAULT_FROM_EMAIL
+    - name: GLITCHTIP_ENABLE_MCP
+      value: "true"
+    - name: GLITCHTIP_ENABLE_LOGS
+      value: "true"
+    - name: GLITCHTIP_UPTIME_ALLOW_PRIVATE_IPS
+      value: "true"
+    - name: GLITCHTIP_RETENTION_DAYS
+      value: "90"
+    - name: GLITCHTIP_TRANSACTION_RETENTION_DAYS
+      value: "30"
+    - name: GLITCHTIP_LOG_RETENTION_DAYS
+      value: "30"
+    - name: GLITCHTIP_FILE_RETENTION_DAYS
+      value: "30"
+    - name: GLITCHTIP_ENABLE_DUCKDB
+      value: "true"
+    - name: GLITCHTIP_COLD_STORAGE_DIR
+      value: "/var/lib/glitchtip/cold-storage"
+    - name: DUCKDB_MEMORY_LIMIT
+      value: "512MB"
+    - name: DUCKDB_TEMP_DIRECTORY
+      value: "/tmp"
+
+  extraVolumes:
+    - name: duckdb-cold-storage
+      persistentVolumeClaim:
+        claimName: glitchtip-duckdb
+
+  extraVolumeMounts:
+    - name: duckdb-cold-storage
+      mountPath: /var/lib/glitchtip/cold-storage
 
   glitchtip:
     domain: "https://glitchtip.local.bysliek.com"

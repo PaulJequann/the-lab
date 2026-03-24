@@ -18,6 +18,7 @@ CONFIG_PATH="${REPO_ROOT}/config.yaml"
 # =====================
 echo "Configuring directories..."
 mkdir -p "${SOPS_AGE_DIR}"
+mkdir -p "${HOME}/.copilot"
 echo "Created user directories"
 
 echo "Directory setup complete"
@@ -33,6 +34,14 @@ if ! command -v claude &> /dev/null; then
     npm install -g @anthropic-ai/claude-code
 else
     echo "Claude Code already installed: $(claude --version 2>/dev/null || echo 'unknown version')"
+fi
+
+# Install GitHub Copilot CLI
+if ! command -v copilot &> /dev/null; then
+  echo "Installing GitHub Copilot CLI..."
+  npm install -g @github/copilot
+else
+  echo "GitHub Copilot CLI already installed: $(copilot --version 2>/dev/null || echo 'unknown version')"
 fi
 
 # =====================
@@ -184,10 +193,10 @@ echo "Post-create commands completed!"
 echo "========================================"
 echo ""
 echo "Available tools:"
-echo "  AI:         claude"
+echo "  AI:         claude, copilot"
 echo "  K8s:        kubectl, helm, kubeseal, argocd, stern, kustomize"
 echo "  Infra:      terraform, ansible, sops, age"
 echo "  Utilities:  cloudflared, prettier, yamllint, pre-commit"
 echo ""
-echo "Run 'claude' to start AI assistant."
+echo "Run 'claude' or 'copilot' to start an AI assistant."
 echo "========================================"
