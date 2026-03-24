@@ -140,6 +140,11 @@ spec:
               if project_key_updates:
                   project_key.save(update_fields=project_key_updates)
 
+              extra_project_keys = ProjectKey.objects.filter(project=project).exclude(pk=project_key.pk)
+              removed_project_key_count = extra_project_keys.count()
+              if removed_project_key_count:
+                  extra_project_keys.delete()
+
               api_token, _ = APIToken.objects.get_or_create(
                   token=token_value,
                   defaults={
@@ -224,5 +229,6 @@ spec:
               print(f"bootstrap admin ready: {username}")
               print(f"bootstrap organization ready: {organization.slug}")
               print(f"bootstrap project ready: {project.slug} ({project.id})")
+              print(f"bootstrap removed extra project keys: {removed_project_key_count}")
               print(f"bootstrap DSN ready: {project_key.get_dsn()}")
               PY
