@@ -36,6 +36,7 @@ spec:
               import base64
               import json
               import os
+              import ssl
               from urllib import error, request
               from uuid import UUID
 
@@ -174,6 +175,8 @@ spec:
               with open(token_path, encoding="utf-8") as handle:
                   kube_token = handle.read().strip()
 
+              ssl_context = ssl.create_default_context(cafile=ca_path)
+
               def kube_request(url, method, payload=None):
                   req = request.Request(url, method=method)
                   req.add_header("Authorization", f"Bearer {kube_token}")
@@ -183,7 +186,7 @@ spec:
                       req.add_header("Content-Type", "application/json")
                   else:
                       body = None
-                  return request.urlopen(req, data=body, cafile=ca_path)
+                  return request.urlopen(req, data=body, context=ssl_context)
 
               secret_payload = {
                   "apiVersion": "v1",
