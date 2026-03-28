@@ -20,6 +20,9 @@ all:
         glitchtip-data:
           ansible_host: 10.0.10.83
           device_model: lxc
+        honcho:
+          ansible_host: 10.0.10.84
+          device_model: lxc
     workers:
       hosts:
         gpop:

@@ -1,0 +1,25 @@
+---
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart postgresql
+  ansible.builtin.systemd:
+    name: "postgresql@{{ honcho_postgres_version }}-main"
+    state: restarted
+
+- name: Restart redis
+  ansible.builtin.systemd:
+    name: redis-server
+    state: restarted
+
+- name: Restart honcho api
+  ansible.builtin.systemd:
+    name: honcho-api
+    state: restarted
+
+- name: Restart honcho deriver
+  ansible.builtin.systemd:
+    name: honcho-deriver
+    state: restarted

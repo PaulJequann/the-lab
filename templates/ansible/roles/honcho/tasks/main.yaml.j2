@@ -1,0 +1,382 @@
+---
+{% raw %}
+- name: Install Honcho host packages
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - acl
+      - build-essential
+      - ca-certificates
+      - curl
+      - git
+      - libpq-dev
+      - pkg-config
+      - postgresql
+      - postgresql-client
+      - postgresql-contrib
+      - python3
+      - python3-pip
+      - python3-psycopg2
+      - python3-venv
+      - redis-server
+      - ufw
+    state: present
+
+- name: Ensure Honcho group exists
+  ansible.builtin.group:
+    name: "{{ honcho_app_group }}"
+    state: present
+
+- name: Ensure Honcho user exists
+  ansible.builtin.user:
+    name: "{{ honcho_app_user }}"
+    group: "{{ honcho_app_group }}"
+    create_home: true
+    shell: /bin/bash
+    system: true
+    state: present
+
+- name: Ensure Honcho directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(honcho_app_user) }}"
+    group: "{{ item.group | default(honcho_app_group) }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ honcho_app_dir }}"
+      mode: "0755"
+    - path: "{{ honcho_checkout_dir }}"
+      mode: "0755"
+    - path: "{{ honcho_env_dir }}"
+      owner: root
+      group: "{{ honcho_app_group }}"
+      mode: "0750"
+
+- name: Discover PostgreSQL cluster version
+  ansible.builtin.command: pg_lsclusters --no-header
+  register: honcho_pg_lsclusters
+  changed_when: false
+
+- name: Set PostgreSQL facts
+  ansible.builtin.set_fact:
+    honcho_postgres_version: "{{ honcho_pg_lsclusters.stdout_lines[0].split()[0] }}"
+    honcho_postgres_config_dir: "/etc/postgresql/{{ honcho_pg_lsclusters.stdout_lines[0].split()[0] }}/main"
+
+- name: Discover pgvector package for installed PostgreSQL version
+  ansible.builtin.command: "apt-cache search ^postgresql-{{ honcho_postgres_version }}-pgvector$"
+  register: honcho_pgvector_search
+  changed_when: false
+
+- name: Ensure PGDG repository prerequisites are installed when pgvector is unavailable
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - gnupg
+      - lsb-release
+    state: present
+  when: honcho_pgvector_search.stdout | trim == ''
+
+- name: Install PGDG signing key when pgvector is unavailable
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/postgresql.asc
+    mode: '0644'
+  when: honcho_pgvector_search.stdout | trim == ''
+
+- name: Enable PGDG repository when pgvector is unavailable
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql.asc] http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    filename: pgdg
+    state: present
+    update_cache: true
+  when: honcho_pgvector_search.stdout | trim == ''
+
+- name: Re-discover pgvector package after enabling PGDG repository
+  ansible.builtin.command: "apt-cache search ^postgresql-{{ honcho_postgres_version }}-pgvector$"
+  register: honcho_pgvector_search_pgdg
+  changed_when: false
+  when: honcho_pgvector_search.stdout | trim == ''
+
+- name: Fail when pgvector package is unavailable
+  ansible.builtin.fail:
+    msg: "No pgvector package was found for PostgreSQL {{ honcho_postgres_version }}. Install the appropriate package or add the PGDG repository before configuring Honcho."
+  when:
+    - honcho_pgvector_search.stdout | trim == ''
+    - honcho_pgvector_search_pgdg.stdout | default('') | trim == ''
+
+- name: Set pgvector package fact
+  ansible.builtin.set_fact:
+    honcho_pgvector_package: >-
+      {{
+        (
+          honcho_pgvector_search.stdout_lines[0]
+          if honcho_pgvector_search.stdout | trim != ''
+          else honcho_pgvector_search_pgdg.stdout_lines[0]
+        ).split()[0]
+      }}
+
+- name: Install pgvector package
+  ansible.builtin.apt:
+    name: "{{ honcho_pgvector_package }}"
+    state: present
+
+- name: Configure PostgreSQL listen addresses
+  ansible.builtin.lineinfile:
+    path: "{{ honcho_postgres_config_dir }}/postgresql.conf"
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '{{ honcho_postgres_listen_addresses }}'"
+  notify: Restart postgresql
+
+- name: Allow Honcho local TCP access into PostgreSQL
+  ansible.builtin.blockinfile:
+    path: "{{ honcho_postgres_config_dir }}/pg_hba.conf"
+    marker: "# {mark} ANSIBLE MANAGED HONCHO"
+    block: |
+      host    {{ honcho_postgres_db }}    {{ honcho_postgres_user }}    {{ honcho_postgres_hba_cidr }}    scram-sha-256
+  notify: Restart postgresql
+
+- name: Ensure PostgreSQL service is enabled and started
+  ansible.builtin.systemd:
+    name: "postgresql@{{ honcho_postgres_version }}-main"
+    enabled: true
+    state: started
+
+- name: Ensure Honcho PostgreSQL role exists
+  community.postgresql.postgresql_user:
+    name: "{{ honcho_postgres_user }}"
+    role_attr_flags: LOGIN
+    state: present
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+  no_log: true
+
+- name: Ensure Honcho PostgreSQL role password is current
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import os
+    import psycopg2
+    from psycopg2 import sql
+
+    conn = psycopg2.connect(dbname="postgres", user="postgres")
+    conn.autocommit = True
+
+    with conn, conn.cursor() as cur:
+        cur.execute(
+            sql.SQL("ALTER ROLE {} WITH LOGIN PASSWORD %s").format(
+                sql.Identifier(os.environ["HONCHO_POSTGRES_USER"])
+            ),
+            (os.environ["HONCHO_POSTGRES_PASSWORD"],),
+        )
+    PY
+  args:
+    executable: /bin/bash
+  environment:
+    HONCHO_POSTGRES_USER: "{{ honcho_postgres_user }}"
+    HONCHO_POSTGRES_PASSWORD: "{{ honcho_postgres_password }}"
+  become_user: postgres
+  changed_when: false
+  no_log: true
+
+- name: Ensure Honcho PostgreSQL database exists
+  community.postgresql.postgresql_db:
+    name: "{{ honcho_postgres_db }}"
+    owner: "{{ honcho_postgres_user }}"
+    encoding: "{{ honcho_postgres_db_encoding }}"
+    template: "{{ honcho_postgres_db_template }}"
+    lc_collate: "{{ honcho_postgres_db_lc_collate }}"
+    lc_ctype: "{{ honcho_postgres_db_lc_ctype }}"
+    state: present
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+
+- name: Ensure pgvector extension is enabled
+  ansible.builtin.command: "psql -d {{ honcho_postgres_db }} -c 'CREATE EXTENSION IF NOT EXISTS vector;'"
+  become_user: postgres
+  changed_when: false
+
+- name: Ensure pg_trgm extension is enabled
+  ansible.builtin.command: "psql -d {{ honcho_postgres_db }} -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'"
+  become_user: postgres
+  changed_when: false
+
+- name: Configure Redis bind address
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^bind '
+    line: "bind {{ honcho_redis_bind }}"
+  notify: Restart redis
+
+- name: Configure Redis port
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^port '
+    line: "port {{ honcho_redis_port }}"
+  notify: Restart redis
+
+- name: Enforce Redis protected mode
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^protected-mode '
+    line: 'protected-mode yes'
+  notify: Restart redis
+
+- name: Enable Redis appendonly persistence
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^appendonly '
+    line: "appendonly {{ honcho_redis_appendonly }}"
+  notify: Restart redis
+
+- name: Configure Redis password
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^#?requirepass '
+    line: "requirepass {{ honcho_redis_password }}"
+  notify: Restart redis
+
+- name: Ensure Redis service is enabled and started
+  ansible.builtin.systemd:
+    name: redis-server
+    enabled: true
+    state: started
+
+- name: Ensure uv is installed for Honcho user
+  ansible.builtin.shell: |
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  args:
+    executable: /bin/bash
+    creates: "{{ honcho_uv_bin }}"
+  environment:
+    HOME: "{{ honcho_home }}"
+  become_user: "{{ honcho_app_user }}"
+
+- name: Checkout Honcho source
+  ansible.builtin.git:
+    repo: "{{ honcho_repo_url }}"
+    dest: "{{ honcho_checkout_dir }}"
+    version: "{{ honcho_version }}"
+    update: true
+  become_user: "{{ honcho_app_user }}"
+  environment:
+    HOME: "{{ honcho_home }}"
+  notify:
+    - Restart honcho api
+    - Restart honcho deriver
+
+- name: Sync Honcho dependencies
+  ansible.builtin.command: "{{ honcho_uv_bin }} sync --frozen --no-group dev"
+  args:
+    chdir: "{{ honcho_checkout_dir }}"
+  environment:
+    HOME: "{{ honcho_home }}"
+  become_user: "{{ honcho_app_user }}"
+  changed_when: false
+
+- name: Render Honcho environment file
+  ansible.builtin.template:
+    src: honcho.env
+    dest: "{{ honcho_env_file }}"
+    owner: root
+    group: "{{ honcho_app_group }}"
+    mode: '0640'
+  notify:
+    - Restart honcho api
+    - Restart honcho deriver
+
+- name: Run Honcho database migrations
+  ansible.builtin.shell: |
+    set -a
+    . {{ honcho_env_file }}
+    if [ -f {{ honcho_env_secrets_file }} ]; then
+      . {{ honcho_env_secrets_file }}
+    fi
+    set +a
+    {{ honcho_uv_bin }} run alembic upgrade head
+  args:
+    chdir: "{{ honcho_checkout_dir }}"
+    executable: /bin/bash
+  environment:
+    HOME: "{{ honcho_home }}"
+  become_user: "{{ honcho_app_user }}"
+  changed_when: false
+
+- name: Check for local Honcho secrets env file
+  ansible.builtin.stat:
+    path: "{{ honcho_env_secrets_file }}"
+  register: honcho_env_secrets_file_stat
+
+- name: Ensure Honcho local secrets env file permissions when present
+  ansible.builtin.file:
+    path: "{{ honcho_env_secrets_file }}"
+    owner: root
+    group: "{{ honcho_app_group }}"
+    mode: '0640'
+  when: honcho_env_secrets_file_stat.stat.exists
+
+- name: Install Honcho API systemd service
+  ansible.builtin.template:
+    src: honcho-api.service
+    dest: /etc/systemd/system/honcho-api.service
+    mode: '0644'
+  notify:
+    - Reload systemd
+    - Restart honcho api
+
+- name: Install Honcho deriver systemd service
+  ansible.builtin.template:
+    src: honcho-deriver.service
+    dest: /etc/systemd/system/honcho-deriver.service
+    mode: '0644'
+  notify:
+    - Reload systemd
+    - Restart honcho deriver
+
+- name: Configure UFW default incoming policy for Honcho host
+  community.general.ufw:
+    direction: incoming
+    default: deny
+  when: honcho_firewall_enabled
+
+- name: Configure UFW default outgoing policy for Honcho host
+  community.general.ufw:
+    direction: outgoing
+    default: allow
+  when: honcho_firewall_enabled
+
+- name: Allow SSH access to Honcho host
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+  when: honcho_firewall_enabled
+
+- name: Allow Traefik to reach Honcho API
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    src: "{{ item }}"
+    port: "{{ honcho_port | string }}"
+    comment: Allow reverse proxy access to Honcho
+  loop: "{{ honcho_trusted_proxy_ips }}"
+  when: honcho_firewall_enabled
+
+- name: Enable UFW on Honcho host
+  community.general.ufw:
+    state: enabled
+  when: honcho_firewall_enabled
+
+- name: Flush handlers before starting Honcho services
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Honcho API service is enabled and started
+  ansible.builtin.systemd:
+    name: honcho-api
+    enabled: true
+    state: started
+
+- name: Ensure Honcho deriver service is enabled and started
+  ansible.builtin.systemd:
+    name: honcho-deriver
+    enabled: true
+    state: started
+{% endraw %}

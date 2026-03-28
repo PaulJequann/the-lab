@@ -1,0 +1,19 @@
+[Unit]
+Description=Honcho API service
+After=network-online.target postgresql@{{ honcho_postgres_version }}-main.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ honcho_app_user }}
+Group={{ honcho_app_group }}
+WorkingDirectory={{ honcho_checkout_dir }}
+Environment=HOME={{ honcho_home }}
+EnvironmentFile={{ honcho_env_file }}
+EnvironmentFile=-{{ honcho_env_secrets_file }}
+ExecStart={{ honcho_uv_bin }} run fastapi run --proxy-headers --forwarded-allow-ips {{ honcho_trusted_proxy_ips | join(',') | quote }} --host {{ honcho_api_bind_address }} --port {{ honcho_port }} src/main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

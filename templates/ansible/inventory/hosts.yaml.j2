@@ -14,6 +14,9 @@ all:
         {{ glitchtip_data_hostname }}:
           ansible_host: {{ glitchtip_data_ip }}
           device_model: lxc
+        {{ honcho_hostname }}:
+          ansible_host: {{ honcho_ip }}
+          device_model: lxc
     {{ agent_group }}:
       hosts:
         {% for node in node_inventory if not node.controller %}

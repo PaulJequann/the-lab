@@ -61,3 +61,21 @@ tasks:
     dir: "{{.TERRAFORM_DIR}}/glitchtip-data"
     cmds:
       - terraform apply --auto-approve {{.CLI_ARGS}}
+
+  init-honcho:
+    desc: Initialize terraform for the Honcho host
+    dir: "{{.TERRAFORM_DIR}}/honcho"
+    cmds:
+      - terraform init {{.CLI_ARGS}}
+
+  plan-honcho:
+    desc: Show the terraform plan for the Honcho host
+    dir: "{{.TERRAFORM_DIR}}/honcho"
+    cmds:
+      - terraform plan {{.CLI_ARGS}}
+
+  apply-honcho:
+    desc: Apply terraform for the Honcho host
+    dir: "{{.TERRAFORM_DIR}}/honcho"
+    cmds:
+      - terraform apply --auto-approve {{.CLI_ARGS}}

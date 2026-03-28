@@ -1,0 +1,18 @@
+---
+honcho_home: /home/honcho
+honcho_checkout_dir: /opt/honcho/app
+honcho_env_dir: /etc/honcho
+honcho_env_file: /etc/honcho/honcho.env
+honcho_env_secrets_file: /etc/honcho/honcho.secrets.env
+honcho_uv_bin: /home/honcho/.local/bin/uv
+honcho_api_bind_address: 0.0.0.0
+honcho_trusted_proxy_ips: []
+honcho_firewall_enabled: false
+honcho_postgres_listen_addresses: localhost
+honcho_postgres_hba_cidr: 127.0.0.1/32
+honcho_postgres_db_encoding: UTF8
+honcho_postgres_db_template: template0
+honcho_postgres_db_lc_collate: C.UTF-8
+honcho_postgres_db_lc_ctype: C.UTF-8
+honcho_redis_bind: 127.0.0.1
+honcho_redis_appendonly: "yes"

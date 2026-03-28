@@ -236,3 +236,46 @@ tasks:
         msg: "Set unifi_username in config.yaml"
       - sh: test "$(yq eval '.unifi_password' config.yaml)" != "REPLACE_ME"
         msg: "Set unifi_password in config.yaml"
+
+  deploy-honcho:
+    desc: Render config, provision the Honcho host, and configure Honcho, PostgreSQL, and Redis
+    cmds:
+      - task: configure
+      - task: terraform:init-honcho
+      - task: terraform:apply-honcho
+      - task: ansible:bootstrap-honcho
+      - task: ansible:configure-honcho
+    preconditions:
+      - sh: test "$(yq eval '.proxmox_api_url' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_url in config.yaml"
+      - sh: test "$(yq eval '.proxmox_api_token_id' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_token_id in config.yaml"
+      - sh: test "$(yq eval '.proxmox_lxc_template_name' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_lxc_template_name in config.yaml"
+      - sh: test -z "$(yq eval '.proxmox_lxc_template_name' config.yaml | grep '\.tmp\.')"
+        msg: "proxmox_lxc_template_name must be the final Proxmox template volume, not a temporary .tmp download path"
+      - sh: yq eval '.proxmox_lxc_template_name' config.yaml | grep -q ':vztmpl/'
+        msg: "proxmox_lxc_template_name must look like <storage>:vztmpl/<template-file>.tar.zst"
+      - sh: test "$(yq eval '.proxmox_api_token_secret' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_token_secret in config.yaml"
+      - sh: test "$(yq eval '.proxmox_lxc_template_name' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_lxc_template_name in config.yaml"
+      - sh: test "$(yq eval '.proxmox_lxc_initial_password' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_lxc_initial_password in config.yaml"
+      - sh: test "$(yq eval '.unifi_api_url' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_api_url in config.yaml"
+      - sh: test "$(yq eval '.unifi_username' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_username in config.yaml"
+      - sh: test "$(yq eval '.unifi_password' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_password in config.yaml"
+
+  reconfigure-honcho:
+    desc: Re-render templates and reapply Honcho runtime configuration
+    preconditions:
+      - sh: ip route get "$(yq eval '.honcho_ip' config.yaml)" >/dev/null 2>&1
+        msg: "No local route to honcho_ip from this environment"
+      - sh: bash -lc 'ip="$(yq eval ".honcho_ip" config.yaml)"; exec 3<>/dev/tcp/${ip}/22'
+        msg: "Cannot reach Honcho SSH on honcho_ip. Run task deploy-honcho first, or verify the LXC is up and reachable."
+    cmds:
+      - task: configure
+      - task: ansible:configure-honcho

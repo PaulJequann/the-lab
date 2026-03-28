@@ -55,6 +55,18 @@ This project uses `task` (via Taskfile.yml) instead of `make` or `npm`. There is
   - Use `sops filename.sops.yaml` to edit encrypted files.
   - Files matching `*.sops.*` are automatically encrypted by `task configure`.
 
+### Server-Local Secret Files (Strict!)
+- **Honcho local secrets:** `/etc/honcho/honcho.secrets.env` is intentionally server-local and must not be treated like a repo-managed config file.
+- **Default rule:** Agents must not read, print, cat, sed, source, or otherwise pull the raw contents of `/etc/honcho/honcho.secrets.env` into chat context.
+- **Never expose values:** Secret values from server-local secret files must never be echoed back into tool output, logs, patches, summaries, or chat responses.
+- **Preferred verification:** Validate behavior indirectly through service health, systemd status, logs, HTTP responses, or configuration that is already repo-managed.
+- **Allowed safe interaction:** If the user explicitly requests diagnosis or repair involving `/etc/honcho/honcho.secrets.env`, agents may use:
+  - Redacted inspection commands that preserve key names but replace values before output reaches chat.
+  - On-host rewrite/normalization commands that transform the file in place without printing secret values.
+  - Permission/ownership checks that do not reveal file contents.
+- **Forbidden examples:** `cat /etc/honcho/honcho.secrets.env`, sourcing the file and printing env vars, copying it into the workspace, or quoting any secret value in the response.
+- **If unsure:** Stop and ask before interacting with a server-local secret file directly.
+
 ### Naming & Formatting
 - **Files:** Kebab-case (`my-app.yaml`, `cluster-issuer.yaml`).
 - **Templates:** Must end in `.j2` (e.g., `app.yaml.j2`).
@@ -78,3 +90,4 @@ This project uses `task` (via Taskfile.yml) instead of `make` or `npm`. There is
 - **No `package.json`:** Do not assume Node.js/NPM workflows.
 - **No Manual Edits:** If you see a file in `kubernetes/` or `ansible/`, check if a corresponding file exists in `templates/`. If so, edit the template.
 - **Run Configure:** Always suggest running `task configure` after editing templates.
+- **Respect Secret Boundaries:** Treat `/etc/honcho/honcho.secrets.env` as off-limits by default; only use redacted inspection or in-place on-host remediation when the user explicitly asks for help with that file.

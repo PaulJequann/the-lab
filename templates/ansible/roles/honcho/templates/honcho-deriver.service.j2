@@ -1,0 +1,20 @@
+{% raw %}[Unit]
+Description=Honcho deriver service
+After=network-online.target postgresql@{{ honcho_postgres_version }}-main.service redis-server.service honcho-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ honcho_app_user }}
+Group={{ honcho_app_group }}
+WorkingDirectory={{ honcho_checkout_dir }}
+Environment=HOME={{ honcho_home }}
+EnvironmentFile={{ honcho_env_file }}
+EnvironmentFile=-{{ honcho_env_secrets_file }}
+ExecStart={{ honcho_uv_bin }} run python -m src.deriver
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+{% endraw %}

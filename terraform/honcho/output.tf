@@ -1,0 +1,7 @@
+output "honcho_mac_address" {
+  value = proxmox_lxc.honcho.network[0].hwaddr
+}
+
+output "honcho_ip" {
+  value = "10.0.10.84"
+}

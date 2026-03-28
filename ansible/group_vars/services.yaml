@@ -9,4 +9,157 @@ glitchtip_backup_enabled: False
 glitchtip_backup_nfs_server: truenas.local.bysliek.com
 glitchtip_backup_nfs_path: /mnt/k8s-ssd-pool/glitchtip-postgres-backups
 glitchtip_backup_retention_days: 14
+honcho_hostname: honcho
+honcho_ip: 10.0.10.84
+honcho_repo_url: https://github.com/plastic-labs/honcho.git
+honcho_version: v3.0.3
+honcho_app_user: honcho
+honcho_app_group: honcho
+honcho_app_dir: /opt/honcho
+honcho_api_bind_address: 0.0.0.0
+honcho_port: 8000
+honcho_trusted_proxy_ips: ["10.0.10.164"]
+honcho_firewall_enabled: True
+honcho_log_level: INFO
+honcho_namespace: honcho
+honcho_session_observers_limit: 10
+honcho_get_context_max_tokens: 100000
+honcho_max_message_size: 25000
+honcho_max_file_size: 5242880
+honcho_embed_messages: True
+honcho_max_embedding_tokens: 8192
+honcho_max_embedding_tokens_per_request: 300000
+honcho_langfuse_host: 
+honcho_langfuse_public_key: 
+honcho_collect_metrics_local: False
+honcho_local_metrics_file: metrics.jsonl
+honcho_reasoning_traces_file: traces.jsonl
+honcho_postgres_db: honcho
+honcho_postgres_user: honcho
+honcho_postgres_port: 5432
+honcho_db_schema: public
+honcho_db_pool_class: default
+honcho_db_pool_pre_ping: True
+honcho_db_pool_size: 10
+honcho_db_max_overflow: 20
+honcho_db_pool_timeout: 30
+honcho_db_pool_recycle: 300
+honcho_db_pool_use_lifo: True
+honcho_db_sql_debug: False
+honcho_db_tracing: False
+honcho_redis_port: 6379
+honcho_cache_enabled: True
+honcho_cache_namespace: honcho
+honcho_cache_default_ttl_seconds: 300
+honcho_cache_default_lock_ttl_seconds: 5
+honcho_auth_use_auth: False
+honcho_llm_default_max_tokens: 2500
+honcho_llm_embedding_provider: openai
+honcho_llm_max_tool_output_chars: 10000
+honcho_llm_max_message_content_chars: 2000
+honcho_llm_openai_compatible_base_url: 
+honcho_llm_vllm_base_url: 
+honcho_dialectic_max_output_tokens: 8192
+honcho_dialectic_max_input_tokens: 100000
+honcho_dialectic_history_token_limit: 8192
+honcho_dialectic_session_history_max_tokens: 4096
+honcho_dialectic_minimal_provider: google
+honcho_dialectic_minimal_model: gemini-2.5-flash-lite
+honcho_dialectic_minimal_thinking_budget_tokens: 0
+honcho_dialectic_minimal_max_tool_iterations: 1
+honcho_dialectic_minimal_max_output_tokens: 250
+honcho_dialectic_minimal_tool_choice: any
+honcho_dialectic_low_provider: google
+honcho_dialectic_low_model: gemini-2.5-flash-lite
+honcho_dialectic_low_thinking_budget_tokens: 0
+honcho_dialectic_low_max_tool_iterations: 5
+honcho_dialectic_low_tool_choice: any
+honcho_dialectic_medium_provider: anthropic
+honcho_dialectic_medium_model: claude-haiku-4-5
+honcho_dialectic_medium_thinking_budget_tokens: 1024
+honcho_dialectic_medium_max_tool_iterations: 2
+honcho_dialectic_high_provider: anthropic
+honcho_dialectic_high_model: claude-haiku-4-5
+honcho_dialectic_high_thinking_budget_tokens: 1024
+honcho_dialectic_high_max_tool_iterations: 4
+honcho_dialectic_max_provider: anthropic
+honcho_dialectic_max_model: claude-haiku-4-5
+honcho_dialectic_max_thinking_budget_tokens: 2048
+honcho_dialectic_max_max_tool_iterations: 10
+honcho_dialectic_max_backup_provider: 
+honcho_dialectic_max_backup_model: 
+honcho_deriver_enabled: True
+honcho_deriver_workers: 1
+honcho_deriver_provider: google
+honcho_deriver_model: gemini-2.5-flash-lite
+honcho_deriver_max_output_tokens: 4096
+honcho_deriver_thinking_budget_tokens: 1024
+honcho_deriver_max_input_tokens: 23000
+honcho_deriver_temperature: 
+honcho_deriver_backup_provider: 
+honcho_deriver_backup_model: 
+honcho_deriver_polling_sleep_interval_seconds: 1.0
+honcho_deriver_stale_session_timeout_minutes: 5
+honcho_deriver_queue_error_retention_seconds: 2592000
+honcho_deriver_deduplicate: True
+honcho_deriver_log_observations: False
+honcho_deriver_working_representation_max_observations: 100
+honcho_deriver_representation_batch_max_tokens: 1024
+honcho_peer_card_enabled: True
+honcho_summary_enabled: True
+honcho_summary_provider: google
+honcho_summary_model: gemini-2.5-flash
+honcho_summary_max_tokens_short: 1000
+honcho_summary_max_tokens_long: 4000
+honcho_summary_thinking_budget_tokens: 512
+honcho_summary_backup_provider: 
+honcho_summary_backup_model: 
+honcho_summary_messages_per_short_summary: 20
+honcho_summary_messages_per_long_summary: 60
+honcho_dream_enabled: True
+honcho_dream_provider: anthropic
+honcho_dream_model: claude-sonnet-4-20250514
+honcho_dream_max_output_tokens: 16384
+honcho_dream_thinking_budget_tokens: 8192
+honcho_dream_max_tool_iterations: 20
+honcho_dream_history_token_limit: 16384
+honcho_dream_backup_provider: 
+honcho_dream_backup_model: 
+honcho_dream_deduction_model: claude-haiku-4-5
+honcho_dream_induction_model: claude-haiku-4-5
+honcho_dream_document_threshold: 50
+honcho_dream_idle_timeout_minutes: 60
+honcho_dream_min_hours_between_dreams: 8
+honcho_dream_enabled_types: ['omni']
+honcho_dream_surprisal_enabled: False
+honcho_dream_surprisal_tree_type: kdtree
+honcho_dream_surprisal_tree_k: 5
+honcho_dream_surprisal_sampling_strategy: recent
+honcho_dream_surprisal_sample_size: 200
+honcho_dream_surprisal_top_percent_surprisal: 0.1
+honcho_dream_surprisal_min_high_surprisal_for_replace: 10
+honcho_dream_surprisal_include_levels: ['explicit', 'deductive']
+honcho_metrics_enabled: False
+honcho_metrics_namespace: honcho
+honcho_telemetry_enabled: False
+honcho_telemetry_endpoint: 
+honcho_telemetry_namespace: honcho
+honcho_telemetry_batch_size: 100
+honcho_telemetry_flush_interval_seconds: 1.0
+honcho_telemetry_flush_threshold: 50
+honcho_telemetry_max_retries: 3
+honcho_telemetry_max_buffer_size: 10000
+honcho_vector_store_type: pgvector
+honcho_vector_store_migrated: False
+honcho_vector_store_namespace: honcho
+honcho_vector_store_dimensions: 1536
+honcho_vector_store_reconciliation_interval_seconds: 300
+honcho_vector_store_turbopuffer_region: us-east-1
+honcho_vector_store_lancedb_path: ./lancedb_data
+honcho_sentry_enabled: False
+honcho_sentry_environment: homelab
+honcho_sentry_release: v3.0.3
+honcho_sentry_traces_sample_rate: 0.0
+honcho_sentry_profiles_sample_rate: 0.0
+honcho_webhook_max_workspace_limit: 10
 node_network: 10.0.10.0/24

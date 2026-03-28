@@ -1,7 +1,7 @@
-resource "proxmox_lxc" "glitchtip_data" {
+resource "proxmox_lxc" "honcho" {
   target_node = "mia"
 
-  hostname        = "glitchtip-data"
+  hostname        = "honcho"
   ostemplate      = var.template_name
   password        = var.cipassword
   unprivileged    = true
@@ -9,30 +9,30 @@ resource "proxmox_lxc" "glitchtip_data" {
   onboot          = true
   start           = true
 
-  cores  = 2
-  memory = 1024
+  cores  = 4
+  memory = 2048
   swap   = 0
 
   rootfs {
     storage = "local-lvm"
-    size    = "40G"
+    size    = "50G"
   }
 
   network {
     name   = "eth0"
     bridge = "vmbr0"
     gw     = "10.0.10.1"
-    ip     = "10.0.10.83/24"
+    ip     = "10.0.10.84/24"
   }
 
   nameserver = "1.1.1.1"
 }
 
-resource "unifi_user" "glitchtip_data" {
+resource "unifi_user" "honcho" {
   allow_existing         = true
-  name                   = "glitchtip-data"
-  mac                    = proxmox_lxc.glitchtip_data.network[0].hwaddr
-  fixed_ip               = "10.0.10.83"
+  name                   = "honcho"
+  mac                    = proxmox_lxc.honcho.network[0].hwaddr
+  fixed_ip               = "10.0.10.84"
   network_id             = "6445cb96b3a9fe1157bda058"
   skip_forget_on_destroy = true
 }

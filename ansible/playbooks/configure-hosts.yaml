@@ -5,14 +5,22 @@
   gather_facts: false
 
   pre_tasks:
+    - name: Load encrypted bootstrap variables
+      community.sops.load_vars:
+        file: "{{ playbook_dir }}/../inventory/group_vars/all.sops.yaml"
+
     - name: Check known_hosts for {{ inventory_hostname }}
-      local_action: shell ssh-keygen -F {{ inventory_hostname }}
+      local_action:
+        module: shell
+        cmd: >-
+          KNOWN_HOSTS_FILE="${HOME:-/root}/.ssh/known_hosts";
+          [ -f "$KNOWN_HOSTS_FILE" ] && ssh-keygen -F {{ inventory_hostname }} -f "$KNOWN_HOSTS_FILE"
       register: has_entry_in_known_hosts_file
       changed_when: false
       ignore_errors: true
       
     - name: Set SSH arguments to ignore host key checking on first connection
-      when: has_entry_in_known_hosts_file.rc == 1
+      when: has_entry_in_known_hosts_file.rc != 0
       set_fact:
         ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
 
@@ -45,6 +53,25 @@
         create_home: true
         shell: /bin/bash
       become: true
+
+    - name: Create bootstrap admin user with sudo privileges
+      user:
+        name: "{{ bootstrap_admin_user }}"
+        state: present
+        groups: "{{ sudo_group }}"
+        append: true
+        create_home: true
+        shell: /bin/bash
+      become: true
+
+    - name: Set bootstrap admin user password
+      ansible.builtin.shell: |
+        printf '%s:%s\n' '{{ bootstrap_admin_user }}' '{{ cipassword }}' | chpasswd
+      args:
+        executable: /bin/bash
+      become: true
+      changed_when: false
+      no_log: true
       
     - name: Create .ssh directory for ansible user
       file:
@@ -55,9 +82,25 @@
         mode: '0700'
       become: true
 
+    - name: Create .ssh directory for bootstrap admin user
+      file:
+        path: "/home/{{ bootstrap_admin_user }}/.ssh"
+        state: directory
+        owner: "{{ bootstrap_admin_user }}"
+        group: "{{ bootstrap_admin_user }}"
+        mode: '0700'
+      become: true
+
     - name: Copy SSH key for ansible user
       authorized_key:
         user: ansible
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
+      become: true
+
+    - name: Copy SSH key for bootstrap admin user
+      authorized_key:
+        user: "{{ bootstrap_admin_user }}"
         state: present
         key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_ed25519.pub') }}"
       become: true
@@ -67,6 +110,16 @@
       lineinfile:
         path: /etc/sudoers.d/ansible
         line: "ansible ALL=(ALL) NOPASSWD:ALL"
+        state: present
+        create: yes
+        validate: "/usr/sbin/visudo -cf %s"
+        mode: '0440'
+      become: true
+
+    - name: Grant passwordless sudo access for bootstrap admin user
+      lineinfile:
+        path: "/etc/sudoers.d/{{ bootstrap_admin_user }}"
+        line: "{{ bootstrap_admin_user }} ALL=(ALL) NOPASSWD:ALL"
         state: present
         create: yes
         validate: "/usr/sbin/visudo -cf %s"
