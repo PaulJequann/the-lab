@@ -55,3 +55,7 @@ spec:
           kind: Deployment
           jqPathExpressions:
             - '.spec.template.metadata.annotations."kubectl.kubernetes.io/restartedAt"'
+        - group: bitnami.com
+          kind: SealedSecret
+          jsonPointers:
+            - /metadata/annotations
