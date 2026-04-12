@@ -125,13 +125,13 @@ tasks:
     desc: Bootstrap the GlitchTip data host with the ansible user and base settings
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml --limit services -u root -e "ansible_user=root" {{.CLI_ARGS}}
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml --limit glitchtip-data -u root -e "ansible_user=root" {{.CLI_ARGS}}
 
   configure-glitchtip-data:
     desc: Configure PostgreSQL and Redis on the GlitchTip data host
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/glitchtip-data.yml --limit services {{.CLI_ARGS}}
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/glitchtip-data.yml --limit glitchtip-data {{.CLI_ARGS}}
 
   bootstrap-honcho:
     desc: Bootstrap the Honcho host with the ansible user and base settings
@@ -144,6 +144,12 @@ tasks:
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
       - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/honcho.yml --limit honcho {{.CLI_ARGS}}
+
+  reconfigure-honcho-runtime:
+    desc: Reapply Honcho runtime configuration without updating the checkout
+    dir: "{{.ANSIBLE_DIR}}"
+    cmds:
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/honcho.yml --limit honcho -e "honcho_manage_source=false" {{.CLI_ARGS}}
 
   get-kubeconfig:
     desc: Get the kubeconfig file from the k3s cluster

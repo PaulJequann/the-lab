@@ -12,7 +12,7 @@ glitchtip_backup_retention_days: 14
 honcho_hostname: honcho
 honcho_ip: 10.0.10.84
 honcho_repo_url: https://github.com/plastic-labs/honcho.git
-honcho_version: v3.0.3
+honcho_version: v3.0.5
 honcho_app_user: honcho
 honcho_app_group: honcho
 honcho_app_dir: /opt/honcho
@@ -69,10 +69,10 @@ honcho_dialectic_minimal_thinking_budget_tokens: 0
 honcho_dialectic_minimal_max_tool_iterations: 1
 honcho_dialectic_minimal_max_output_tokens: 250
 honcho_dialectic_minimal_tool_choice: any
-honcho_dialectic_low_provider: google
-honcho_dialectic_low_model: gemini-2.5-flash-lite
-honcho_dialectic_low_thinking_budget_tokens: 0
-honcho_dialectic_low_max_tool_iterations: 5
+honcho_dialectic_low_provider: anthropic
+honcho_dialectic_low_model: claude-haiku-4-5
+honcho_dialectic_low_thinking_budget_tokens: 1024
+honcho_dialectic_low_max_tool_iterations: 2
 honcho_dialectic_low_tool_choice: any
 honcho_dialectic_medium_provider: anthropic
 honcho_dialectic_medium_model: claude-haiku-4-5
@@ -158,7 +158,7 @@ honcho_vector_store_turbopuffer_region: us-east-1
 honcho_vector_store_lancedb_path: ./lancedb_data
 honcho_sentry_enabled: False
 honcho_sentry_environment: homelab
-honcho_sentry_release: v3.0.3
+honcho_sentry_release: v3.0.5
 honcho_sentry_traces_sample_rate: 0.0
 honcho_sentry_profiles_sample_rate: 0.0
 honcho_webhook_max_workspace_limit: 10

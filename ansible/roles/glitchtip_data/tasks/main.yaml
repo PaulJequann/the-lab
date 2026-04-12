@@ -38,6 +38,28 @@
     glitchtip_postgres_version: "{{ glitchtip_pg_lsclusters.stdout_lines[0].split()[0] }}"
     glitchtip_postgres_config_dir: "/etc/postgresql/{{ glitchtip_pg_lsclusters.stdout_lines[0].split()[0] }}/main"
 
+- name: Validate additional PostgreSQL database definitions
+  ansible.builtin.assert:
+    that:
+      - managed_database.name is string
+      - managed_database.name | length > 0
+      - managed_database.user is string
+      - managed_database.user | length > 0
+      - managed_database.password is string
+      - managed_database.password | length > 0
+      - managed_database.allowed_cidrs is sequence
+      - managed_database.allowed_cidrs is not string
+      - managed_database.allowed_cidrs | length > 0
+    fail_msg: "Each glitchtip_postgres_additional_databases entry must include name, user, password, and at least one allowed_cidrs value."
+  loop: "{{ glitchtip_postgres_additional_databases | default([]) }}"
+  loop_control:
+    loop_var: managed_database
+  no_log: true
+
+- name: Build managed PostgreSQL database definitions
+  ansible.builtin.set_fact:
+    glitchtip_postgres_managed_databases: "{{ [{'name': glitchtip_postgres_db, 'user': glitchtip_postgres_user, 'password': glitchtip_postgres_password, 'allowed_cidrs': [node_network]}] + (glitchtip_postgres_additional_databases | default([])) }}"
+
 - name: Configure PostgreSQL listen addresses
   ansible.builtin.lineinfile:
     path: "{{ glitchtip_postgres_config_dir }}/postgresql.conf"
@@ -45,12 +67,16 @@
     line: "listen_addresses = '{{ glitchtip_postgres_listen_addresses }}'"
   notify: Restart postgresql
 
-- name: Allow cluster subnet into PostgreSQL
+- name: Allow managed application CIDRs into PostgreSQL
   ansible.builtin.blockinfile:
     path: "{{ glitchtip_postgres_config_dir }}/pg_hba.conf"
     marker: "# {mark} ANSIBLE MANAGED GLITCHTIP"
     block: |
-      host    {{ glitchtip_postgres_db }}    {{ glitchtip_postgres_user }}    {{ node_network }}    scram-sha-256
+      {% for managed_database in glitchtip_postgres_managed_databases %}
+      {% for allowed_cidr in managed_database.allowed_cidrs %}
+      host    {{ managed_database.name }}    {{ managed_database.user }}    {{ allowed_cidr }}    scram-sha-256
+      {% endfor %}
+      {% endfor %}
   notify: Restart postgresql
 
 - name: Ensure PostgreSQL service is enabled and started
@@ -59,16 +85,19 @@
     enabled: true
     state: started
 
-- name: Ensure GlitchTip PostgreSQL role exists
+- name: Ensure managed PostgreSQL roles exist
   community.postgresql.postgresql_user:
-    name: "{{ glitchtip_postgres_user }}"
+    name: "{{ managed_database.user }}"
     role_attr_flags: LOGIN
     state: present
     login_unix_socket: /var/run/postgresql
+  loop: "{{ glitchtip_postgres_managed_databases }}"
+  loop_control:
+    loop_var: managed_database
   become_user: postgres
   no_log: true
 
-- name: Ensure GlitchTip PostgreSQL role password is current
+- name: Ensure managed PostgreSQL role passwords are current
   ansible.builtin.shell: |
     python3 - <<'PY'
     import os
@@ -89,22 +118,28 @@
   args:
     executable: /bin/bash
   environment:
-    GLITCHTIP_POSTGRES_USER: "{{ glitchtip_postgres_user }}"
-    GLITCHTIP_POSTGRES_PASSWORD: "{{ glitchtip_postgres_password }}"
+    GLITCHTIP_POSTGRES_USER: "{{ managed_database.user }}"
+    GLITCHTIP_POSTGRES_PASSWORD: "{{ managed_database.password }}"
+  loop: "{{ glitchtip_postgres_managed_databases }}"
+  loop_control:
+    loop_var: managed_database
   become_user: postgres
   changed_when: false
   no_log: true
 
-- name: Ensure GlitchTip PostgreSQL database exists
+- name: Ensure managed PostgreSQL databases exist
   community.postgresql.postgresql_db:
-    name: "{{ glitchtip_postgres_db }}"
-    owner: "{{ glitchtip_postgres_user }}"
+    name: "{{ managed_database.name }}"
+    owner: "{{ managed_database.user }}"
     encoding: "{{ glitchtip_postgres_db_encoding }}"
     template: "{{ glitchtip_postgres_db_template }}"
     lc_collate: "{{ glitchtip_postgres_db_lc_collate }}"
     lc_ctype: "{{ glitchtip_postgres_db_lc_ctype }}"
     state: present
     login_unix_socket: /var/run/postgresql
+  loop: "{{ glitchtip_postgres_managed_databases }}"
+  loop_control:
+    loop_var: managed_database
   become_user: postgres
 
 - name: Configure Redis bind address

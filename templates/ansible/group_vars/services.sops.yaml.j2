@@ -1,5 +1,19 @@
 ---
 glitchtip_postgres_password: {{ glitchtip_postgres_password }}
+{% if glitchtip_postgres_additional_databases | default([]) %}
+glitchtip_postgres_additional_databases:
+{% for database in glitchtip_postgres_additional_databases %}
+  - name: '{{ database.name | replace("'", "''") }}'
+    user: '{{ database.user | replace("'", "''") }}'
+    password: '{{ database.password | replace("'", "''") }}'
+    allowed_cidrs:
+{% for allowed_cidr in database.allowed_cidrs %}
+      - '{{ allowed_cidr | replace("'", "''") }}'
+{% endfor %}
+{% endfor %}
+{% else %}
+glitchtip_postgres_additional_databases: []
+{% endif %}
 glitchtip_redis_password: {{ glitchtip_redis_password }}
 glitchtip_secret_key: {{ glitchtip_secret_key }}
 glitchtip_email_url: {{ glitchtip_email_url }}

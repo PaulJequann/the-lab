@@ -241,37 +241,63 @@
     enabled: true
     state: started
 
-- name: Ensure uv is installed for Honcho user
-  ansible.builtin.shell: |
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-  args:
-    executable: /bin/bash
-    creates: "{{ honcho_uv_bin }}"
-  environment:
-    HOME: "{{ honcho_home }}"
-  become_user: "{{ honcho_app_user }}"
+- name: Manage Honcho source checkout
+  when: honcho_manage_source | bool
+  block:
+    - name: Ensure uv is installed for Honcho user
+      ansible.builtin.shell: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+      args:
+        executable: /bin/bash
+        creates: "{{ honcho_uv_bin }}"
+      environment:
+        HOME: "{{ honcho_home }}"
+      become_user: "{{ honcho_app_user }}"
 
-- name: Checkout Honcho source
-  ansible.builtin.git:
-    repo: "{{ honcho_repo_url }}"
-    dest: "{{ honcho_checkout_dir }}"
-    version: "{{ honcho_version }}"
-    update: true
-  become_user: "{{ honcho_app_user }}"
-  environment:
-    HOME: "{{ honcho_home }}"
-  notify:
-    - Restart honcho api
-    - Restart honcho deriver
+    - name: Check whether Honcho checkout already exists
+      ansible.builtin.stat:
+        path: "{{ honcho_checkout_dir }}/.git"
+      register: honcho_checkout_git_stat
 
-- name: Sync Honcho dependencies
-  ansible.builtin.command: "{{ honcho_uv_bin }} sync --frozen --no-group dev"
-  args:
-    chdir: "{{ honcho_checkout_dir }}"
-  environment:
-    HOME: "{{ honcho_home }}"
-  become_user: "{{ honcho_app_user }}"
-  changed_when: false
+    - name: Force-refresh Honcho git refs when checkout exists
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ honcho_checkout_dir }}"
+          - fetch
+          - --prune
+          - --prune-tags
+          - origin
+          - "+refs/heads/*:refs/remotes/origin/*"
+          - "+refs/tags/*:refs/tags/*"
+      environment:
+        HOME: "{{ honcho_home }}"
+      become_user: "{{ honcho_app_user }}"
+      changed_when: false
+      when: honcho_checkout_git_stat.stat.exists
+
+    - name: Checkout Honcho source
+      ansible.builtin.git:
+        repo: "{{ honcho_repo_url }}"
+        dest: "{{ honcho_checkout_dir }}"
+        version: "{{ honcho_version }}"
+        update: true
+      become_user: "{{ honcho_app_user }}"
+      environment:
+        HOME: "{{ honcho_home }}"
+      notify:
+        - Restart honcho api
+        - Restart honcho deriver
+
+    - name: Sync Honcho dependencies
+      ansible.builtin.command: "{{ honcho_uv_bin }} sync --frozen --no-group dev"
+      args:
+        chdir: "{{ honcho_checkout_dir }}"
+      environment:
+        HOME: "{{ honcho_home }}"
+      become_user: "{{ honcho_app_user }}"
+      changed_when: false
 
 - name: Render Honcho environment file
   ansible.builtin.template:
@@ -300,6 +326,7 @@
     HOME: "{{ honcho_home }}"
   become_user: "{{ honcho_app_user }}"
   changed_when: false
+  when: honcho_manage_source | bool
 
 - name: Check for local Honcho secrets env file
   ansible.builtin.stat:

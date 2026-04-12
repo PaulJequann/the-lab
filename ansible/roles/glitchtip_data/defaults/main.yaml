@@ -1,6 +1,7 @@
 ---
 glitchtip_backup_mount_point: /mnt/glitchtip-postgres-backups
 glitchtip_backup_schedule: '*-*-* 03:15:00'
+glitchtip_postgres_additional_databases: []
 glitchtip_postgres_listen_addresses: 'localhost,10.0.10.83'
 glitchtip_postgres_db_encoding: UTF8
 glitchtip_postgres_db_template: template0

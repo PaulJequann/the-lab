@@ -1,6 +1,6 @@
 ---
 - name: Configure GlitchTip data host
-  hosts: services
+  hosts: glitchtip-data
   become: true
   gather_facts: true
   pre_tasks:

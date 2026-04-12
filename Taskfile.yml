@@ -115,6 +115,24 @@ tasks:
       - makejinja --input ./templates/kubernetes/ --output {{.KUBERNETES_DIR}}
       - echo "Templates regenerated successfully"
 
+  render-honcho-ansible:
+    desc: Render only the Ansible files needed for Honcho configuration
+    sources:
+      - config.yaml
+      - templates/ansible/group_vars/services.yaml.j2
+      - templates/ansible/playbooks/honcho.yml.j2
+      - templates/ansible/roles/honcho/**/*.j2
+    generates:
+      - "{{.ANSIBLE_DIR}}/group_vars/services.yaml"
+      - "{{.ANSIBLE_DIR}}/playbooks/honcho.yml"
+      - "{{.ANSIBLE_DIR}}/roles/honcho/**/*"
+    cmds:
+      - echo "Regenerating Honcho-related Ansible templates..."
+      - makejinja --input ./templates/ansible/group_vars/services.yaml.j2 --output {{.ANSIBLE_DIR}}/group_vars
+      - makejinja --input ./templates/ansible/playbooks/honcho.yml.j2 --output {{.ANSIBLE_DIR}}/playbooks
+      - makejinja --input ./templates/ansible/roles/honcho/ --output {{.ANSIBLE_DIR}}/roles/honcho
+      - echo "Honcho-related Ansible templates regenerated successfully"
+
   encrypt-secrets:
     cmds:
       - for: { var: SECRET_FILES }
@@ -270,12 +288,12 @@ tasks:
         msg: "Set unifi_password in config.yaml"
 
   reconfigure-honcho:
-    desc: Re-render templates and reapply Honcho runtime configuration
+    desc: Re-render Honcho Ansible templates and reapply Honcho runtime configuration
     preconditions:
       - sh: ip route get "$(yq eval '.honcho_ip' config.yaml)" >/dev/null 2>&1
         msg: "No local route to honcho_ip from this environment"
       - sh: bash -lc 'ip="$(yq eval ".honcho_ip" config.yaml)"; exec 3<>/dev/tcp/${ip}/22'
         msg: "Cannot reach Honcho SSH on honcho_ip. Run task deploy-honcho first, or verify the LXC is up and reachable."
     cmds:
-      - task: configure
-      - task: ansible:configure-honcho
+      - task: render-honcho-ansible
+      - task: ansible:reconfigure-honcho-runtime

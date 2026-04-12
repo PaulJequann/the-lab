@@ -5,6 +5,7 @@ honcho_env_dir: /etc/honcho
 honcho_env_file: /etc/honcho/honcho.env
 honcho_env_secrets_file: /etc/honcho/honcho.secrets.env
 honcho_uv_bin: /home/honcho/.local/bin/uv
+honcho_manage_source: true
 honcho_api_bind_address: 0.0.0.0
 honcho_trusted_proxy_ips: []
 honcho_firewall_enabled: false
