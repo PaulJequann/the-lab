@@ -9,15 +9,16 @@
       community.sops.load_vars:
         file: "{{ playbook_dir }}/../inventory/group_vars/all.sops.yaml"
 
-    - name: Check known_hosts for {{ inventory_hostname }}
-      local_action:
-        module: shell
-        cmd: >-
-          KNOWN_HOSTS_FILE="${HOME:-/root}/.ssh/known_hosts";
-          [ -f "$KNOWN_HOSTS_FILE" ] && ssh-keygen -F {{ inventory_hostname }} -f "$KNOWN_HOSTS_FILE"
+    - name: Check known_hosts for SSH target
+      ansible.builtin.shell: >-
+        KNOWN_HOSTS_FILE="${HOME:-/root}/.ssh/known_hosts";
+        [ -f "$KNOWN_HOSTS_FILE" ] &&
+        ssh-keygen -F {{ ansible_host | default(inventory_hostname) | quote }} -f "$KNOWN_HOSTS_FILE"
+      delegate_to: localhost
+      become: false
       register: has_entry_in_known_hosts_file
       changed_when: false
-      ignore_errors: true
+      failed_when: false
       
     - name: Set SSH arguments to ignore host key checking on first connection
       when: has_entry_in_known_hosts_file.rc != 0
@@ -180,6 +181,7 @@
       apt:
         update_cache: yes
         upgrade: yes
+        lock_timeout: 600
       become: true
       when: ansible_facts['os_family'] == "Debian"
 

@@ -169,7 +169,7 @@ infisical_postgres_db: infisical
 infisical_postgres_user: infisical
 infisical_postgres_port: 5432
 infisical_redis_port: 6379
-infisical_backup_enabled: True
+infisical_backup_enabled: False
 infisical_backup_nfs_server: truenas.local.bysliek.com
 infisical_backup_nfs_path: /mnt/k8s-ssd-pool/infisical-postgres-backups
 infisical_backup_retention_days: 14
