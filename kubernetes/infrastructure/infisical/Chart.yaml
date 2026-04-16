@@ -1,0 +1,11 @@
+apiVersion: v2
+name: infisical
+description: Self-hosted Infisical (umbrella chart wrapping infisical-standalone)
+type: application
+version: 1.0.0
+appVersion: "1.8.0"
+
+dependencies:
+  - name: infisical-standalone
+    version: 1.8.0
+    repository: oci://helm.oci.cloudsmith.io/infisical/helm-charts

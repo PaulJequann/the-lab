@@ -1,0 +1,37 @@
+infisical-standalone:
+  infisical:
+    replicaCount: 1
+    kubeSecretRef: infisical-secrets
+    autoBootstrap:
+      enabled: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  ingress:
+    enabled: true
+    ingressClassName: cilium
+    hostName: infisical.local.bysliek.com
+    nginx:
+      enabled: false
+    annotations:
+      cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+    tls:
+      - secretName: infisical-tls
+        hosts:
+          - infisical.local.bysliek.com
+
+  postgresql:
+    enabled: false
+    useExistingPostgresSecret:
+      enabled: true
+      existingConnectionStringSecret:
+        name: infisical-postgres-connection
+        key: connectionString
+
+  redis:
+    enabled: false

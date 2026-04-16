@@ -1,0 +1,11 @@
+apiVersion: v2
+name: infisical
+description: Self-hosted Infisical (umbrella chart wrapping infisical-standalone)
+type: application
+version: 1.0.0
+appVersion: "{{ infisical_chart_version }}"
+
+dependencies:
+  - name: infisical-standalone
+    version: {{ infisical_chart_version }}
+    repository: {{ infisical_chart_repo }}

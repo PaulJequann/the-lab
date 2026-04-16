@@ -365,6 +365,65 @@ tasks:
           --from-literal="connectionString=postgresql://infisical:${INFISICAL_DB_PASSWORD}@{{.INFISICAL_DATA_IP}}:5432/infisical?sslmode=disable" \
           --dry-run=client -o yaml | kubectl apply -f -
 
+  deploy-infisical-app:
+    desc: Render, verify, and drive ArgoCD to sync the Infisical K8s application
+    vars:
+      INFISICAL_NS: infisical
+      INFISICAL_DOMAIN: infisical.local.bysliek.com
+      INFISICAL_CHART_DIR: "{{.KUBERNETES_DIR}}/infrastructure/infisical"
+      ARGOCD_NS: argocd
+    preconditions:
+      - sh: command -v kubectl >/dev/null 2>&1
+        msg: "kubectl must be installed."
+      - sh: kubectl cluster-info >/dev/null 2>&1
+        msg: "kubectl cannot reach the current cluster. Fix kubeconfig or cluster access before running deploy-infisical-app."
+      - sh: command -v helm >/dev/null 2>&1
+        msg: "helm must be installed for dry-render verification."
+      - sh: kubectl -n {{.INFISICAL_NS}} get secret infisical-secrets >/dev/null 2>&1
+        msg: "infisical-secrets bootstrap Secret not found in {{.INFISICAL_NS}} namespace. Run: task deploy-infisical-data"
+      - sh: kubectl -n {{.INFISICAL_NS}} get secret infisical-postgres-connection >/dev/null 2>&1
+        msg: "infisical-postgres-connection bootstrap Secret not found in {{.INFISICAL_NS}} namespace. Run: task deploy-infisical-data"
+      - sh: test -f {{.INFISICAL_CHART_DIR}}/Chart.yaml
+        msg: "{{.INFISICAL_CHART_DIR}}/Chart.yaml missing. Run: task configure"
+      - sh: test -f {{.INFISICAL_CHART_DIR}}/values.yaml
+        msg: "{{.INFISICAL_CHART_DIR}}/values.yaml missing. Run: task configure"
+    cmds:
+      - task: configure
+      - helm dependency build {{.INFISICAL_CHART_DIR}}
+      - helm template infisical {{.INFISICAL_CHART_DIR}} >/dev/null
+      - |
+        if ! kubectl -n {{.ARGOCD_NS}} get application infisical >/dev/null 2>&1; then
+          echo "ArgoCD Application 'infisical' does not exist yet."
+          echo "Commit and push kubernetes/infrastructure/infisical/ so the cluster-apps ApplicationSet creates it, then re-run this task."
+          exit 1
+        fi
+      - kubectl -n {{.ARGOCD_NS}} annotate application infisical argocd.argoproj.io/refresh=normal --overwrite
+      - |
+        echo "Waiting for Infisical Deployment to become Available (up to 5m)..."
+        kubectl -n {{.INFISICAL_NS}} wait --for=condition=Available deployment --all --timeout=5m
+      - |
+        echo "Probing https://{{.INFISICAL_DOMAIN}}/api/status..."
+        status=$(curl -sk -o /dev/null -w "%{http_code}" https://{{.INFISICAL_DOMAIN}}/api/status || echo "000")
+        if [ "$status" != "200" ]; then
+          echo "API status check failed: HTTP $status"
+          echo "Check: kubectl -n {{.INFISICAL_NS}} get pods,ingress,certificate"
+          exit 1
+        fi
+        echo "API OK (HTTP 200)"
+      - |
+        echo ""
+        echo "A.4 done gate:"
+        echo "  [x] bootstrap Secrets present in {{.INFISICAL_NS}}"
+        echo "  [x] ArgoCD Application exists and refresh triggered"
+        echo "  [x] Deployment Available (pods Ready)"
+        echo "  [x] https://{{.INFISICAL_DOMAIN}}/api/status returned 200"
+        echo ""
+        echo "Manual follow-up before closing A.4:"
+        echo "  - Verify ArgoCD app health: kubectl -n {{.ARGOCD_NS}} get application infisical"
+        echo "  - Verify TLS cert issued (not self-signed): kubectl -n {{.INFISICAL_NS}} get certificate infisical-tls"
+        echo "  - Sign up root admin at https://{{.INFISICAL_DOMAIN}}/"
+        echo "  - Save credentials to Bitwarden: homelab/infisical/admin-email + homelab/infisical/admin-password"
+
   reconfigure-honcho:
     desc: Re-render Honcho Ansible templates and reapply Honcho runtime configuration
     preconditions:

@@ -1,0 +1,37 @@
+infisical-standalone:
+  infisical:
+    replicaCount: 1
+    kubeSecretRef: {{ infisical_bootstrap_env_secret }}
+    autoBootstrap:
+      enabled: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  ingress:
+    enabled: true
+    ingressClassName: cilium
+    hostName: {{ infisical_domain }}
+    nginx:
+      enabled: false
+    annotations:
+      cert-manager.io/cluster-issuer: {{ cert_manager_issuer_name }}
+    tls:
+      - secretName: infisical-tls
+        hosts:
+          - {{ infisical_domain }}
+
+  postgresql:
+    enabled: false
+    useExistingPostgresSecret:
+      enabled: true
+      existingConnectionStringSecret:
+        name: {{ infisical_bootstrap_postgres_secret }}
+        key: connectionString
+
+  redis:
+    enabled: false
