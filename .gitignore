@@ -33,6 +33,8 @@ __pycache__/
 **/__pycache__/
 
 .task
+.direnv/
+.envrc.local
 
 # Sealed Secrets
 .sealed-secrets-public-cert.pem
