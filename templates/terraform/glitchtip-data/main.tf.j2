@@ -1,38 +1,22 @@
-resource "proxmox_lxc" "glitchtip_data" {
-  target_node = "{{ glitchtip_data_target_node }}"
+{% set svc = terraform_service_lxcs['glitchtip-data'] %}
 
-  hostname        = "{{ glitchtip_data_hostname }}"
-  ostemplate      = var.template_name
-  password        = var.cipassword
-  unprivileged    = true
-  ssh_public_keys = file(var.ssh_key_file)
-  onboot          = true
-  start           = true
+module "service_host" {
+  source = "../modules/proxmox-lxc-service"
 
-  cores  = {{ glitchtip_data_cores }}
-  memory = {{ glitchtip_data_memory_mb }}
-  swap   = {{ glitchtip_data_swap_mb }}
-
-  rootfs {
-    storage = "{{ glitchtip_data_storage }}"
-    size    = "{{ glitchtip_data_disk_size }}"
-  }
-
-  network {
-    name   = "eth0"
-    bridge = "vmbr0"
-    gw     = "{{ glitchtip_data_gateway }}"
-    ip     = "{{ glitchtip_data_ip }}/24"
-  }
-
-  nameserver = "{{ dns_servers[0] }}"
-}
-
-resource "unifi_user" "glitchtip_data" {
-  allow_existing         = true
-  name                   = "{{ glitchtip_data_hostname }}"
-  mac                    = proxmox_lxc.glitchtip_data.network[0].hwaddr
-  fixed_ip               = "{{ glitchtip_data_ip }}"
-  network_id             = "{{ unifi_network_id }}"
-  skip_forget_on_destroy = true
+  target_node      = "{{ svc.target_node }}"
+  hostname         = "{{ svc.hostname }}"
+  ip_address       = "{{ svc.ip }}"
+  gateway          = "{{ svc.gateway }}"
+  storage          = "{{ svc.storage }}"
+  disk_size        = "{{ svc.disk_size }}"
+  cores            = {{ svc.cores }}
+  memory           = {{ svc.memory_mb }}
+  swap             = {{ svc.swap_mb }}
+  nameserver       = "{{ svc.nameserver }}"
+  bridge           = "{{ svc.bridge | default('vmbr0') }}"
+  cidr_suffix      = {{ svc.cidr_suffix | default(24) }}
+  template_name    = var.template_name
+  ssh_key_file     = var.ssh_key_file
+  cipassword       = var.cipassword
+  unifi_network_id = "{{ unifi_network_id }}"
 }

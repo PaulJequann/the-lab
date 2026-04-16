@@ -1,0 +1,181 @@
+{% raw %}
+---
+
+- name: Install Infisical data host packages
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - acl
+      - nfs-common
+      - postgresql
+      - postgresql-client
+      - python3-psycopg2
+      - redis-server
+    state: present
+
+- name: Ensure PostgreSQL backup mount point exists
+  ansible.builtin.file:
+    path: "{{ infisical_backup_mount_point }}"
+    state: directory
+    mode: "0755"
+  when: infisical_backup_enabled | bool
+
+- name: Mount PostgreSQL backup export
+  ansible.posix.mount:
+    path: "{{ infisical_backup_mount_point }}"
+    src: "{{ infisical_backup_nfs_server }}:{{ infisical_backup_nfs_path }}"
+    fstype: nfs
+    opts: rw,_netdev,nfsvers=4.1
+    state: mounted
+  when: infisical_backup_enabled | bool
+
+- name: Discover PostgreSQL cluster version
+  ansible.builtin.command: pg_lsclusters --no-header
+  register: infisical_pg_lsclusters
+  changed_when: false
+
+- name: Set PostgreSQL facts
+  ansible.builtin.set_fact:
+    infisical_postgres_version: "{{ infisical_pg_lsclusters.stdout_lines[0].split()[0] }}"
+    infisical_postgres_config_dir: "/etc/postgresql/{{ infisical_pg_lsclusters.stdout_lines[0].split()[0] }}/main"
+
+- name: Configure PostgreSQL listen addresses
+  ansible.builtin.lineinfile:
+    path: "{{ infisical_postgres_config_dir }}/postgresql.conf"
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '{{ infisical_postgres_listen_addresses }}'"
+  notify: Restart postgresql
+
+- name: Allow Infisical application CIDRs into PostgreSQL
+  ansible.builtin.blockinfile:
+    path: "{{ infisical_postgres_config_dir }}/pg_hba.conf"
+    marker: "# {mark} ANSIBLE MANAGED INFISICAL"
+    block: |
+      host    {{ infisical_postgres_db }}    {{ infisical_postgres_user }}    {{ node_network }}    scram-sha-256
+  notify: Restart postgresql
+
+- name: Ensure PostgreSQL service is enabled and started
+  ansible.builtin.systemd:
+    name: "postgresql@{{ infisical_postgres_version }}-main"
+    enabled: true
+    state: started
+
+- name: Ensure Infisical PostgreSQL role exists
+  community.postgresql.postgresql_user:
+    name: "{{ infisical_postgres_user }}"
+    role_attr_flags: LOGIN
+    state: present
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+  no_log: true
+
+- name: Ensure Infisical PostgreSQL role password is current
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import os
+    import psycopg2
+    from psycopg2 import sql
+
+    conn = psycopg2.connect(dbname="postgres", user="postgres")
+    conn.autocommit = True
+
+    with conn, conn.cursor() as cur:
+        cur.execute(
+            sql.SQL("ALTER ROLE {} WITH LOGIN PASSWORD %s").format(
+                sql.Identifier(os.environ["INFISICAL_POSTGRES_USER"])
+            ),
+            (os.environ["INFISICAL_POSTGRES_PASSWORD"],),
+        )
+    PY
+  args:
+    executable: /bin/bash
+  environment:
+    INFISICAL_POSTGRES_USER: "{{ infisical_postgres_user }}"
+    INFISICAL_POSTGRES_PASSWORD: "{{ infisical_postgres_password }}"
+  become_user: postgres
+  changed_when: false
+  no_log: true
+
+- name: Ensure Infisical PostgreSQL database exists
+  community.postgresql.postgresql_db:
+    name: "{{ infisical_postgres_db }}"
+    owner: "{{ infisical_postgres_user }}"
+    encoding: "{{ infisical_postgres_db_encoding }}"
+    template: "{{ infisical_postgres_db_template }}"
+    lc_collate: "{{ infisical_postgres_db_lc_collate }}"
+    lc_ctype: "{{ infisical_postgres_db_lc_ctype }}"
+    state: present
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+
+- name: Configure Redis bind address
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^bind '
+    line: "bind {{ infisical_redis_bind }}"
+  notify: Restart redis
+
+- name: Configure Redis port
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^port '
+    line: "port {{ infisical_redis_port }}"
+  notify: Restart redis
+
+- name: Enforce Redis protected mode
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^protected-mode '
+    line: 'protected-mode yes'
+  notify: Restart redis
+
+- name: Enable Redis appendonly persistence
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^appendonly '
+    line: "appendonly {{ infisical_redis_appendonly }}"
+  notify: Restart redis
+
+- name: Configure Redis password
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^#?requirepass '
+    line: "requirepass {{ infisical_redis_password }}"
+  notify: Restart redis
+
+- name: Ensure Redis service is enabled and started
+  ansible.builtin.systemd:
+    name: redis-server
+    enabled: true
+    state: started
+
+- name: Install PostgreSQL backup script
+  ansible.builtin.template:
+    src: postgresql-backup.sh
+    dest: /usr/local/bin/infisical-postgresql-backup.sh
+    mode: '0750'
+  when: infisical_backup_enabled | bool
+
+- name: Install PostgreSQL backup service
+  ansible.builtin.template:
+    src: postgresql-backup.service
+    dest: /etc/systemd/system/infisical-postgresql-backup.service
+    mode: '0644'
+  notify: Reload systemd
+  when: infisical_backup_enabled | bool
+
+- name: Install PostgreSQL backup timer
+  ansible.builtin.template:
+    src: postgresql-backup.timer
+    dest: /etc/systemd/system/infisical-postgresql-backup.timer
+    mode: '0644'
+  notify: Reload systemd
+  when: infisical_backup_enabled | bool
+
+- name: Enable PostgreSQL backup timer
+  ansible.builtin.systemd:
+    name: infisical-postgresql-backup.timer
+    enabled: true
+    state: started
+  when: infisical_backup_enabled | bool
+{% endraw %}

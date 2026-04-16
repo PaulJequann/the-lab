@@ -1,0 +1,11 @@
+
+[Unit]
+Description=Nightly Infisical PostgreSQL backups
+
+[Timer]
+OnCalendar={{ infisical_backup_schedule }}
+Persistent=true
+Unit=infisical-postgresql-backup.service
+
+[Install]
+WantedBy=timers.target

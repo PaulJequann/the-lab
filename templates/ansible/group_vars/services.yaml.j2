@@ -162,4 +162,16 @@ honcho_sentry_release: {{ honcho_sentry_release }}
 honcho_sentry_traces_sample_rate: {{ honcho_sentry_traces_sample_rate }}
 honcho_sentry_profiles_sample_rate: {{ honcho_sentry_profiles_sample_rate }}
 honcho_webhook_max_workspace_limit: {{ honcho_webhook_max_workspace_limit }}
+{% set infisical = terraform_service_lxcs['infisical-data'] %}
+# infisical data host
+infisical_data_hostname: {{ infisical.hostname }}
+infisical_data_ip: {{ infisical.ip }}
+infisical_postgres_db: {{ infisical.postgres.db }}
+infisical_postgres_user: {{ infisical.postgres.user }}
+infisical_postgres_port: {{ infisical.postgres.port }}
+infisical_redis_port: {{ infisical.redis.port }}
+infisical_backup_enabled: {{ infisical.backup.enabled }}
+infisical_backup_nfs_server: {{ infisical.backup.nfs_server }}
+infisical_backup_nfs_path: {{ infisical.backup.nfs_path }}
+infisical_backup_retention_days: {{ infisical.backup.retention_days }}
 node_network: {{ node_network }}

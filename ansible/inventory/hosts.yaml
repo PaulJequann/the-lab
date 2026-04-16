@@ -23,6 +23,9 @@ all:
         honcho:
           ansible_host: 10.0.10.84
           device_model: lxc
+        infisical-data:
+          ansible_host: 10.0.10.85
+          device_model: lxc
     workers:
       hosts:
         gpop:

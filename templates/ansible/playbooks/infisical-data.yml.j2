@@ -1,0 +1,29 @@
+---
+- name: Configure Infisical data host
+  hosts: infisical-data
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Load service variables
+      ansible.builtin.include_vars:
+        file: "{% raw %}{{ playbook_dir }}{% endraw %}/../group_vars/services.yaml"
+
+    - name: Read secrets from environment variables
+      ansible.builtin.set_fact:
+        infisical_postgres_password: "{% raw %}{{ lookup('env', 'INFISICAL_DB_PASSWORD') }}{% endraw %}"
+        infisical_redis_password: "{% raw %}{{ lookup('env', 'INFISICAL_REDIS_PASSWORD') }}{% endraw %}"
+      no_log: true
+
+    - name: Validate required secrets are present
+      ansible.builtin.assert:
+        that:
+          - infisical_postgres_password | length > 0
+          - infisical_redis_password | length > 0
+        fail_msg: >-
+          Required environment variables missing.
+          Set INFISICAL_DB_PASSWORD and INFISICAL_REDIS_PASSWORD
+          before running this playbook (via the bootstrap wrapper script
+          or manually for development/testing).
+
+  roles:
+    - infisical_data

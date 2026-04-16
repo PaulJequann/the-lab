@@ -1,0 +1,10 @@
+{% raw %}
+[Unit]
+Description=Infisical PostgreSQL backup job
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/infisical-postgresql-backup.sh
+{% endraw %}

@@ -1,7 +1,7 @@
 output "glitchtip_data_mac_address" {
-  value = proxmox_lxc.glitchtip_data.network[0].hwaddr
+  value = module.service_host.mac_address
 }
 
 output "glitchtip_data_ip" {
-  value = "10.0.10.83"
+  value = module.service_host.ip_address
 }

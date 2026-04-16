@@ -128,6 +128,23 @@ else
 fi
 
 # =====================
+# rbw Installation (Bitwarden CLI for bootstrap secrets)
+# =====================
+echo "Installing rbw..."
+RBW_TARGET_VER="1.15.0"
+if command -v rbw &>/dev/null && [[ "$(rbw --version 2>/dev/null)" == "rbw ${RBW_TARGET_VER}" ]]; then
+  echo "rbw ${RBW_TARGET_VER} already installed. Skipping."
+else
+  RBW_TMP="$(mktemp -d)"
+  curl -fL "https://github.com/doy/rbw/releases/download/${RBW_TARGET_VER}/rbw_${RBW_TARGET_VER}_linux_amd64.tar.gz" -o "${RBW_TMP}/rbw.tar.gz"
+  tar -xzf "${RBW_TMP}/rbw.tar.gz" -C "${RBW_TMP}"
+  sudo install -m 0755 "${RBW_TMP}/rbw" /usr/local/bin/rbw
+  sudo install -m 0755 "${RBW_TMP}/rbw-agent" /usr/local/bin/rbw-agent
+  rm -rf "${RBW_TMP}"
+  echo "rbw installed: $(rbw --version)"
+fi
+
+# =====================
 # kubeseal Installation (Debian devcontainer, linux-amd64)
 # =====================
 echo "Installing kubeseal..."
@@ -195,7 +212,7 @@ echo ""
 echo "Available tools:"
 echo "  AI:         claude, copilot"
 echo "  K8s:        kubectl, helm, kubeseal, argocd, stern, kustomize"
-echo "  Infra:      terraform, ansible, sops, age"
+echo "  Infra:      terraform, ansible, sops, age, rbw"
 echo "  Utilities:  cloudflared, prettier, yamllint, pre-commit"
 echo ""
 echo "Run 'claude' or 'copilot' to start an AI assistant."

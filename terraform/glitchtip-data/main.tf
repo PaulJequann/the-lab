@@ -1,38 +1,21 @@
-resource "proxmox_lxc" "glitchtip_data" {
-  target_node = "mia"
 
-  hostname        = "glitchtip-data"
-  ostemplate      = var.template_name
-  password        = var.cipassword
-  unprivileged    = true
-  ssh_public_keys = file(var.ssh_key_file)
-  onboot          = true
-  start           = true
+module "service_host" {
+  source = "../modules/proxmox-lxc-service"
 
-  cores  = 2
-  memory = 1024
-  swap   = 0
-
-  rootfs {
-    storage = "local-lvm"
-    size    = "40G"
-  }
-
-  network {
-    name   = "eth0"
-    bridge = "vmbr0"
-    gw     = "10.0.10.1"
-    ip     = "10.0.10.83/24"
-  }
-
-  nameserver = "1.1.1.1"
-}
-
-resource "unifi_user" "glitchtip_data" {
-  allow_existing         = true
-  name                   = "glitchtip-data"
-  mac                    = proxmox_lxc.glitchtip_data.network[0].hwaddr
-  fixed_ip               = "10.0.10.83"
-  network_id             = "6445cb96b3a9fe1157bda058"
-  skip_forget_on_destroy = true
+  target_node      = "mia"
+  hostname         = "glitchtip-data"
+  ip_address       = "10.0.10.83"
+  gateway          = "10.0.10.1"
+  storage          = "local-lvm"
+  disk_size        = "40G"
+  cores            = 2
+  memory           = 1024
+  swap             = 0
+  nameserver       = "1.1.1.1"
+  bridge           = "vmbr0"
+  cidr_suffix      = 24
+  template_name    = var.template_name
+  ssh_key_file     = var.ssh_key_file
+  cipassword       = var.cipassword
+  unifi_network_id = "6445cb96b3a9fe1157bda058"
 }

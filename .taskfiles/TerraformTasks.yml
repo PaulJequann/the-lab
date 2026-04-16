@@ -79,3 +79,21 @@ tasks:
     dir: "{{.TERRAFORM_DIR}}/honcho"
     cmds:
       - terraform apply --auto-approve {{.CLI_ARGS}}
+
+  init-infisical-data:
+    desc: Initialize terraform for the Infisical data host
+    dir: "{{.TERRAFORM_DIR}}/infisical-data"
+    cmds:
+      - terraform init {{.CLI_ARGS}}
+
+  plan-infisical-data:
+    desc: Show the terraform plan for the Infisical data host
+    dir: "{{.TERRAFORM_DIR}}/infisical-data"
+    cmds:
+      - terraform plan {{.CLI_ARGS}}
+
+  apply-infisical-data:
+    desc: Apply terraform for the Infisical data host
+    dir: "{{.TERRAFORM_DIR}}/infisical-data"
+    cmds:
+      - terraform apply --auto-approve {{.CLI_ARGS}}

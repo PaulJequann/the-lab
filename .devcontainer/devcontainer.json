@@ -6,6 +6,7 @@
     "dockerfile": "Dockerfile",
     "context": "."
   },
+  "runArgs": ["--network=host"],
   "remoteUser": "vscode",
   "updateRemoteUserUID": false,
   "features": {
@@ -36,6 +37,12 @@
     "source=${localEnv:HOME}/.terraform.d/credentials.tfrc.json,target=/home/vscode/.terraform.d/credentials.tfrc.json,type=bind,consistency=cached,readonly",
     // Kubernetes config
     "source=${localEnv:HOME}/.kube,target=/home/vscode/.kube,type=bind,consistency=cached",
+    // rbw (Bitwarden CLI) — agent socket for bootstrap secret access
+    "source=/run/user/1000/rbw-bootstrap,target=/run/user/1000/rbw-bootstrap,type=bind,consistency=cached",
+    // rbw config, data, and cache for bootstrap profile
+    "source=${localEnv:HOME}/.config/rbw-bootstrap,target=/home/vscode/.config/rbw-bootstrap,type=bind,consistency=cached,readonly",
+    "source=${localEnv:HOME}/.local/share/rbw-bootstrap,target=/home/vscode/.local/share/rbw-bootstrap,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.cache/rbw-bootstrap,target=/home/vscode/.cache/rbw-bootstrap,type=bind,consistency=cached,readonly",
     // Claude Code config persistence
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
     // GitHub Copilot CLI config persistence
@@ -45,6 +52,7 @@
   ],
   "remoteEnv": {
     "SOPS_AGE_KEY_FILE": "/home/vscode/.config/sops/age/keys.txt",
+    "XDG_RUNTIME_DIR": "/run/user/1000",
     "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
     "COPILOT_GITHUB_TOKEN": "${localEnv:COPILOT_GITHUB_TOKEN}",
     "GH_TOKEN": "${localEnv:GH_TOKEN}",

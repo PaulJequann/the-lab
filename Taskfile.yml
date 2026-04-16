@@ -84,6 +84,11 @@ tasks:
     cmds:
       - ./configure --verify
 
+  test:
+    desc: Run local regression tests
+    cmds:
+      - bash tests/load-bootstrap-secrets-test.sh
+
   # configure:
   #   desc: Configure repository from env settings
   #   cmds:
@@ -286,6 +291,79 @@ tasks:
         msg: "Set unifi_username in config.yaml"
       - sh: test "$(yq eval '.unifi_password' config.yaml)" != "REPLACE_ME"
         msg: "Set unifi_password in config.yaml"
+
+  deploy-infisical-data:
+    desc: Deploy the Infisical data host and create K8s bootstrap secrets
+    cmds:
+      - |
+        source scripts/load-bootstrap-secrets.sh all
+        task configure && \
+        task terraform:init-infisical-data && \
+        task terraform:apply-infisical-data && \
+        task ansible:bootstrap-infisical-data && \
+        task ansible:configure-infisical-data && \
+        task create-infisical-k8s-secrets
+    preconditions:
+      - sh: command -v rbw >/dev/null 2>&1
+        msg: "rbw must be installed on the host workstation."
+      - sh: RBW_PROFILE=bootstrap rbw config show >/dev/null 2>&1
+        msg: "rbw bootstrap profile is not configured. Configure RBW_PROFILE=bootstrap first."
+      - sh: command -v kubectl >/dev/null 2>&1
+        msg: "kubectl must be installed."
+      - sh: kubectl cluster-info >/dev/null 2>&1
+        msg: "kubectl cannot reach the current cluster. Fix kubeconfig or cluster access before running deploy-infisical-data."
+      - sh: yq --version 2>/dev/null | grep -q '^yq (https://github.com/mikefarah/yq/) version v4\.'
+        msg: "deploy-infisical-data requires Mike Farah yq v4. Install the system package: go-yq."
+      - sh: test "$(yq eval '.proxmox_api_url' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_url in config.yaml"
+      - sh: test "$(yq eval '.proxmox_api_token_id' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_token_id in config.yaml"
+      - sh: test "$(yq eval '.proxmox_lxc_template_name' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_lxc_template_name in config.yaml"
+      - sh: test -z "$(yq eval '.proxmox_lxc_template_name' config.yaml | grep '\.tmp\.')"
+        msg: "proxmox_lxc_template_name must be the final Proxmox template volume, not a temporary .tmp download path"
+      - sh: yq eval '.proxmox_lxc_template_name' config.yaml | grep -q ':vztmpl/'
+        msg: "proxmox_lxc_template_name must look like <storage>:vztmpl/<template-file>.tar.zst"
+      - sh: test "$(yq eval '.proxmox_api_token_secret' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_token_secret in config.yaml"
+      - sh: test "$(yq eval '.proxmox_lxc_initial_password' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_lxc_initial_password in config.yaml"
+      - sh: test "$(yq eval '.unifi_api_url' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_api_url in config.yaml"
+      - sh: test "$(yq eval '.unifi_username' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_username in config.yaml"
+      - sh: test "$(yq eval '.unifi_password' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_password in config.yaml"
+
+  create-infisical-k8s-secrets:
+    desc: Create or reconcile the Kubernetes namespace and bootstrap secrets for Infisical
+    vars:
+      INFISICAL_NS: infisical
+      INFISICAL_DATA_IP: 10.0.10.85
+    preconditions:
+      - sh: '[ -n "$INFISICAL_DB_PASSWORD" ]'
+        msg: "INFISICAL_DB_PASSWORD not set. Run: source scripts/load-bootstrap-secrets.sh"
+      - sh: '[ -n "$INFISICAL_REDIS_PASSWORD" ]'
+        msg: "INFISICAL_REDIS_PASSWORD not set. Run: source scripts/load-bootstrap-secrets.sh"
+      - sh: '[ -n "$INFISICAL_ENCRYPTION_KEY" ]'
+        msg: "INFISICAL_ENCRYPTION_KEY not set. Run: source scripts/load-bootstrap-secrets.sh"
+      - sh: '[ -n "$INFISICAL_AUTH_SECRET" ]'
+        msg: "INFISICAL_AUTH_SECRET not set. Run: source scripts/load-bootstrap-secrets.sh"
+    cmds:
+      - kubectl create namespace {{.INFISICAL_NS}} --dry-run=client -o yaml | kubectl apply -f -
+      - |
+        kubectl create secret generic infisical-secrets \
+          --namespace={{.INFISICAL_NS}} \
+          --from-literal="ENCRYPTION_KEY=${INFISICAL_ENCRYPTION_KEY}" \
+          --from-literal="AUTH_SECRET=${INFISICAL_AUTH_SECRET}" \
+          --from-literal="REDIS_URL=redis://:${INFISICAL_REDIS_PASSWORD}@{{.INFISICAL_DATA_IP}}:6379" \
+          --from-literal="SITE_URL=https://infisical.local.bysliek.com" \
+          --dry-run=client -o yaml | kubectl apply -f -
+      - |
+        kubectl create secret generic infisical-postgres-connection \
+          --namespace={{.INFISICAL_NS}} \
+          --from-literal="connectionString=postgresql://infisical:${INFISICAL_DB_PASSWORD}@{{.INFISICAL_DATA_IP}}:5432/infisical?sslmode=disable" \
+          --dry-run=client -o yaml | kubectl apply -f -
 
   reconfigure-honcho:
     desc: Re-render Honcho Ansible templates and reapply Honcho runtime configuration

@@ -1,13 +1,14 @@
-# Secret Management & Template Pipeline Redesign
+# Secret Management Redesign
 
 ## Context
 
-The current secrets management in the-lab uses a multi-stage encryption pipeline (config.yaml -> makejinja templates -> SOPS + kubeseal) with three different secret types (SOPS-encrypted YAML, Sealed Secrets, env vars) and five different tools (age, sops, kubeseal, makejinja plugin, envsubst). This has become messy and hard to maintain.
+The current secrets management in the-lab uses a multi-stage encryption pipeline (`config.yaml` -> `makejinja` templates -> SOPS + kubeseal) with three different secret types (SOPS-encrypted YAML, Sealed Secrets, env vars) and five different tools (age, sops, kubeseal, makejinja plugin, envsubst). This has become messy and hard to maintain.
 
-The goal is twofold:
+The goal is:
 
 1. **Replace the entire secret pipeline** with self-hosted Infisical as a single source of truth for secrets consumed by Kubernetes apps, Ansible roles, and Terraform configs
-2. **Eliminate the makejinja template pipeline** and config.yaml, replacing all `.j2` templates with static manifests
+2. **Keep** `task configure` + Jinja templates for deterministic, non-secret rendering of shared configuration across Kubernetes, Ansible, and Terraform
+3. **Remove the nondeterministic secret-generation path** so rerunning `task configure` does not create Git noise when values have not changed
 
 Infisical is not just for this repo — it will be core network infrastructure used by all apps and services on the homelab network.
 
@@ -17,26 +18,27 @@ Infisical is not just for this repo — it will be core network infrastructure u
 | --- | -------------------- | --------------------------------------------------------------------------------- |
 | 1   | DR strategy          | TrueNAS PostgreSQL backups on a dedicated Infisical host                          |
 | 2   | Shared fate          | Dedicated Infisical LXC — isolated from GlitchTip and all app databases           |
-| 3   | Bootstrap trust root | Bitwarden cloud stores the minimal Layer 0 bootstrap secret set                   |
+| 3   | Bootstrap trust root | Bitwarden cloud stores the minimal external secret set: initial bootstrap secrets plus post-bootstrap workstation credentials                   |
 | 4   | Vaultwarden role     | Vaultwarden is a normal homelab app, not a bootstrap dependency                   |
 | 5   | Bootstrap UX         | One idempotent Ansible command; no required manual kubectl secret creation        |
 | 6   | Why Infisical        | UX + simplicity wins for single-operator homelab over Vault/OpenBao               |
-| 7   | Migration order      | Retire ARC first; keep deeptutor in place for now; use cert-manager as the first secret migration target and defer deeptutor redesign work to a later follow-up |
+| 7   | Migration order      | Retire ARC first; keep deeptutor in place, migrate its current three runtime secrets during Phase A so Sealed Secrets can be removed globally, and defer only the larger deeptutor redesign/upgrade follow-up |
 | 8   | Project organization | Single Infisical project with path-based organization, split later if needed      |
-| 9   | config.yaml fate     | Eliminate config.yaml + makejinja entirely (Phase B)                              |
-| 10  | Phasing              | Two-phase: Phase A replaces secrets and removes SOPS; Phase B removes templates   |
+| 9   | config.yaml fate     | Keep `config.yaml` as the non-secret render source and service catalog            |
+| 10  | Template pipeline    | Keep `task configure` + Jinja; remove only secret-related nondeterministic paths  |
 | 11  | ArgoCD ownership     | Exclude operator-managed K8s Secrets from ArgoCD sync                             |
 | 12  | SOPS/Age fate        | Remove SOPS and Age from this repo completely during Phase A                      |
-| 13  | Redis auth           | Infisical LXC Redis uses `requirepass`; `infisical_redis_password` in Layer 0     |
+| 13  | Redis auth           | Infisical LXC Redis uses `requirepass`; `infisical_redis_password` is an initial bootstrap secret stored in Bitwarden cloud     |
 | 14  | Network encryption   | Plaintext PostgreSQL/Redis on private network (same pattern as glitchtip_data)    |
 | 15  | Auth identities      | 3 separate: K8s Auth (operator), Universal Auth (Ansible), Universal Auth (Terraform) — each path-scoped |
 | 16  | Identity IDs         | Hardcoded in static InfisicalSecret YAML manifests (not templated)                |
 | 17  | ArgoCD exclusion     | Label-based via `app.kubernetes.io/managed-by: infisical-operator` propagated from CRD |
-| 18  | BW CLI session       | Pre-extract to env vars via wrapper script; playbook never touches bw directly    |
+| 18  | Bitwarden CLI tool   | Use `rbw` (agent-based Bitwarden CLI) with a dedicated `bootstrap` profile pointing at Bitwarden cloud; playbook never touches rbw directly |
 | 19  | ArgoCD secrets       | Bootstrap-only via Ansible Infisical lookup, NOT operator-managed InfisicalSecrets |
 | 20  | Rollback strategy    | Accept K8s Secret persistence; no warm standby. Restore from backup if needed     |
 | 21  | Monitoring           | Permanent canary InfisicalSecret + ArgoCD health; no additional monitoring infra  |
 | 22  | Infisical LXC IP     | 10.0.10.85 (sequential with glitchtip .83, honcho .84)                            |
+| 23  | ArgoCD admin hash    | Store a precomputed bcrypt hash in Infisical (`admin_password_hash`); do not generate hashes during template rendering or Ansible apply |
 
 ## Architecture
 
@@ -46,10 +48,11 @@ The bootstrap chain has to terminate outside the homelab. Self-hosted systems su
 
 Layer 0 is Bitwarden cloud.
 
-- Holds only the minimal bootstrap secret set needed to stand up Infisical.
-- Holds any workstation-run credential that cannot be stored inside Infisical itself, such as post-bootstrap machine identity credentials for Ansible and Terraform.
+- Holds only the minimal external secret set.
+- Before first bootstrap, this means the initial bootstrap secrets needed to stand up Infisical.
+- After Infisical is running, it also holds workstation-run credentials that cannot be stored only inside Infisical itself, such as post-bootstrap machine identity credentials for Ansible and Terraform.
 - Lives outside the homelab and survives total homelab loss.
-- Is accessed from the workstation through the Bitwarden CLI during bootstrap runs.
+- Is accessed from the workstation through `rbw` (agent-based Bitwarden CLI) using a dedicated `bootstrap` profile during bootstrap runs and later workstation-driven automation.
 
 Layer 1 is self-hosted Infisical.
 
@@ -66,28 +69,34 @@ Layer 2 is everything else.
 
 ### Bootstrap Chain
 
-The only secrets that exist outside Infisical are the minimal bootstrap secrets stored in Bitwarden cloud:
+The only secrets that exist outside Infisical are the minimal external secrets stored in Bitwarden cloud. These fall into two stages:
+
+1. **Initial bootstrap secrets** — must exist before Infisical is first brought up.
+2. **Post-bootstrap workstation credentials** — created later inside Infisical, then copied into Bitwarden because workstation-run Ansible and Terraform cannot fetch their own login credentials from Infisical without creating a circular dependency.
 
 ```
 Bitwarden cloud (Layer 0)
-    ├── proxmox_api_token
-    ├── infisical_db_password
-    ├── infisical_redis_password
-    ├── infisical_encryption_key
-    ├── infisical_auth_secret
-    ├── ansible_machine_identity_client_id/client_secret
-    ├── terraform_machine_identity_client_id/client_secret
-    └── any remaining workstation-run credential that cannot live in Infisical
+    ├── Initial bootstrap secrets
+    │   ├── proxmox_api_token
+    │   ├── infisical_db_password
+    │   ├── infisical_redis_password
+    │   ├── infisical_encryption_key
+    │   ├── infisical_auth_secret
+    │   └── any remaining bootstrap-only external credential
+    ├── Post-bootstrap workstation credentials
+    │   ├── ansible_machine_identity_client_id/client_secret
+    │   └── terraform_machine_identity_client_id/client_secret
       │
       ▼
-Workstation unlocks Bitwarden CLI
+Workstation unlocks rbw agent (RBW_PROFILE=bootstrap)
       │
       ▼
 Ansible injects env vars into bootstrap run
       │
       ├── Provisions Infisical data host
       ├── Creates infisical namespace
-      ├── Creates infisical-bootstrap Secret
+      ├── Creates infisical-secrets Secret
+      ├── Creates infisical-postgres-connection Secret
       └── Applies or syncs Infisical ArgoCD application
         │
         ▼
@@ -99,6 +108,20 @@ Ansible injects env vars into bootstrap run
 ```
 
 There is no bootstrap.sops.yaml, no Age key, and no encrypted bootstrap artifact in this repo.
+
+### Template Pipeline Constraints
+
+The current Git noise problem is caused by nondeterministic secret-generation behavior, not by `makejinja` itself.
+
+- `makejinja.toml` sets `force = true`, so files are rewritten on every render
+- Git only becomes dirty when the rendered bytes actually change
+- Deterministic non-secret templates are acceptable and remain in scope
+- The secret-path pieces that must be removed from active rendering are:
+  - `encrypt-secrets` in `Taskfile.yml`
+  - `bcrypt_password()` in `makejinja/plugin.py`
+  - `seal_secret()` in `makejinja/plugin.py`
+
+After those secret-path pieces are removed and replaced, `task configure` can keep rendering files while `git status` stays clean unless a real config/template value changed.
 
 ### Infrastructure
 
@@ -236,9 +259,9 @@ kubectl -n arc-runners patch rolebinding/<name> \
 
 Only do this after confirming the system is intentionally being retired and the controller is no longer available to clear the finalizers itself.
 
-### 0.2 Keep deeptutor in place and defer redesign work ✅
+### 0.2 Keep deeptutor in place and defer redesign/upgrade work ✅
 
-Keep deeptutor in the homelab for now, but do not let deeptutor upgrade/evaluation block the rest of the secret-management redesign. Deeptutor can be revisited later, after Infisical and the new secret-management patterns are established elsewhere in the cluster.
+Keep deeptutor in the homelab for now, but do not let deeptutor upgrade/evaluation block the rest of the secret-management redesign. Deeptutor's current runtime secret wiring is simple enough that its existing three API-key secrets should still be migrated during Phase A. What stays deferred is the broader deeptutor redesign/upgrade follow-up.
 
 Keep:
 
@@ -250,8 +273,9 @@ Keep:
 Do now:
 
 - Keep the current deeptutor deployment healthy while the broader plan moves forward.
-- Preserve the existing deeptutor manifests, config, secrets, workflow, and namespace until there is a dedicated follow-up for deeptutor.
-- Document that deeptutor is intentionally out of the critical path for Phase 0 and the initial Infisical rollout.
+- Preserve the existing deeptutor manifests, workflow, and namespace while the broader plan moves forward.
+- Treat deeptutor redesign/upgrade as out of the critical path for Phase 0 and the initial Infisical rollout.
+- Migrate deeptutor's current three runtime API-key secrets during Phase A so Sealed Secrets can be removed cluster-wide.
 
 Do later, as a separate follow-up:
 
@@ -266,8 +290,8 @@ Notes:
 
 - DeepTutor is no longer part of the Phase 0 removal scope.
 - DeepTutor is not a blocker for completing Phase 0, Phase A, or the initial Infisical rollout.
-- Because `v1.x` may change the application's env var and secret shape, defer DeepTutor's redesign and secret migration work until there is time to evaluate it deliberately.
-- If the later evaluation succeeds, DeepTutor becomes a follow-up Kubernetes secret migration candidate instead of part of the current critical path.
+- Because `v1.x` may change the application's broader runtime contract, defer DeepTutor's redesign/upgrade work until there is time to evaluate it deliberately.
+- The current three-key secret migration is intentionally smaller in scope than a full app redesign and should happen during Phase A.
 - Current baseline check is good enough to defer safely: ArgoCD reports `deeptutor` as `Synced` and `Healthy`, the Kubernetes deployment is `Available=True`, rollout succeeds, the ingress home page returns HTTP `200`, and the backend OpenAPI document is reachable through a direct port-forward.
 
 **Monitor deeptutor while it remains deferred:**
@@ -341,45 +365,201 @@ kubectl -n deeptutor rollout status deployment/deeptutor --timeout=5m
 
 ## Phase A: Infisical Deployment + Secret Migration
 
-### A.1 Define the Bootstrap Contract
+### A.1 Define the Bootstrap Contract ✅
+
+**Status:** A.1 is complete. All 5 initial bootstrap secrets are created in Bitwarden cloud. The Helm chart contract (OCI standalone chart v1.8.0, two K8s Secrets with specific keys) has been verified.
 
 The bootstrap contract is the minimum external secret set needed to build Layer 1.
 
-Stored in Bitwarden cloud:
+Stored in Bitwarden cloud **before the first Infisical bootstrap run**:
 
 - `proxmox_api_token`
 - `infisical_db_password`
 - `infisical_redis_password`
 - `infisical_encryption_key`
 - `infisical_auth_secret`
+- any remaining bootstrap-only secret still required by the initial provisioning flow
+
+**Current Bitwarden item names (created):**
+
+- [x] `proxmox_api_token` → `homelab/bootstrap/proxmox-api-token`
+- [x] `infisical_db_password` → `homelab/bootstrap/infisical-db-password`
+- [x] `infisical_redis_password` → `homelab/bootstrap/infisical-redis-password`
+- [x] `infisical_encryption_key` → `homelab/bootstrap/infisical-encryption-key`
+- [x] `infisical_auth_secret` → `homelab/bootstrap/infisical-auth-secret`
+
+**Additional Bitwarden items required for Terraform bootstrap (to create):**
+
+- [x] `proxmox_api_token_id` → `homelab/bootstrap/proxmox-api-token-id`
+- [x] `proxmox_cipassword` → `homelab/bootstrap/proxmox-cipassword`
+- [x] `unifi_username` → `homelab/bootstrap/unifi-username`
+- [x] `unifi_password` → `homelab/bootstrap/unifi-password`
+
+These items are needed by the bootstrap Terraform root (`terraform/infisical-data/`) and are currently hardcoded in `.auto.tfvars` files. They must be added to Bitwarden before the wrapper script can fully replace tfvars-based secret injection.
+
+All Bitwarden item names above are the canonical references for the bootstrap wrapper script and any related operator runbooks.
+
+Not part of the initial bootstrap set:
+
 - `ansible_machine_identity_client_id` / `ansible_machine_identity_client_secret`
 - `terraform_machine_identity_client_id` / `terraform_machine_identity_client_secret`
-- any remaining bootstrap-only secret still required by the initial provisioning flow
+
+Those machine identity credentials do ultimately live in Bitwarden cloud as post-bootstrap external workstation credentials, but they are created later in A.7 after Infisical is running and the identities exist.
 
 Bootstrap rules:
 
 - Bitwarden cloud is the only external secret dependency.
 - No encrypted secret files live in this repo.
 - No bootstrap secrets are committed to Git.
-- The bootstrap flow must be executable from a clean workstation with Bitwarden CLI access.
+- The bootstrap flow must be executable from a clean workstation with `rbw` installed and the `bootstrap` profile configured.
 
-**Pre-requisite research (must complete before implementing A.3/A.4):**
+**Chart contract verified for implementation:**
 
-- Read the Infisical Helm chart's `values.yaml` to determine the exact `infisical-bootstrap` Secret schema: what keys must it contain, and how does the chart consume them (`envFrom`, `existingSecret`, or inline `infisicalEnv`).
-- Document the result as a concrete table: key name, source (Bitwarden item), and injection mechanism.
+Use the upstream OCI chart `oci://helm.oci.cloudsmith.io/infisical/helm-charts/infisical-standalone` (verified at version `1.8.0`), not the older Mongo-based HTTP chart.
 
-### A.2 Provision Dedicated Infisical LXC
+The chart consumes bootstrap configuration in two paths:
 
-Create the Infisical host via Ansible, using the Bitwarden-backed bootstrap contract for credentials.
+1. **Main backend env secret** via `infisical.kubeSecretRef` → mounted into the Infisical pod through `envFrom.secretRef`
+2. **PostgreSQL connection string secret** via `postgresql.useExistingPostgresSecret.*` → mounted as `DB_CONNECTION_URI`
 
-**New Ansible role:** `ansible/roles/infisical_data/`
+**Concrete bootstrap contract:**
 
-- Provisions Proxmox LXC (similar pattern to `glitchtip_data`)
-- Installs PostgreSQL + Redis
-- Creates the `infisical` database and user
-- Configures Redis with `requirepass` (password from Layer 0 bootstrap set)
-- Configures backups to TrueNAS NFS (independent from GlitchTip backups)
-- Network: plaintext PostgreSQL/Redis on private network (same trust boundary as glitchtip_data)
+| K8s Secret | Key | Source | Injection mechanism |
+|---|---|---|---|
+| `infisical-secrets` | `ENCRYPTION_KEY` | Bitwarden `infisical_encryption_key` | `infisical.kubeSecretRef` → `envFrom.secretRef` |
+| `infisical-secrets` | `AUTH_SECRET` | Bitwarden `infisical_auth_secret` | `infisical.kubeSecretRef` → `envFrom.secretRef` |
+| `infisical-secrets` | `REDIS_URL` | composed from Bitwarden `infisical_redis_password` and the dedicated LXC address | `infisical.kubeSecretRef` → `envFrom.secretRef` |
+| `infisical-secrets` | `SITE_URL` | static repo-managed value (`https://infisical.local.bysliek.com`) | `infisical.kubeSecretRef` → `envFrom.secretRef` |
+| `infisical-postgres-connection` | `connectionString` | composed PostgreSQL URI for the dedicated Infisical data host | `postgresql.useExistingPostgresSecret.existingConnectionStringSecret` → `DB_CONNECTION_URI` |
+
+Notes:
+
+- `AUTH_SECRET` and `ENCRYPTION_KEY` are the required bootstrap secrets for the current Postgres-based self-hosted Infisical runtime.
+- The older Mongo-based chart contract (`MONGO_URL`, JWT secret set) is intentionally out of scope for this plan.
+- Do not enable the chart's `autoBootstrap` job for initial server startup; it is a post-install root-identity helper, not the server's first-boot secret contract.
+
+### A.2 Provision Dedicated Infisical LXC ✅
+
+**Status:** A.2 is complete. The Terraform root provisioned the LXC (10.0.10.85, running and SSH-reachable). The Ansible role, playbook, inventory, Taskfile entries, and template sources are all implemented and verified via `task render-templates` in the devcontainer and Ansible dry runs.
+
+Use the same split of responsibilities already present elsewhere in this repo for service hosts such as `glitchtip-data` and `honcho`:
+
+- **Terraform** creates the Proxmox LXC and any closely related infrastructure objects.
+- **Ansible** bootstraps the guest OS and configures PostgreSQL, Redis, backups, and service-level settings.
+
+This keeps infrastructure creation aligned with the repo's existing Proxmox IaC pattern while preserving the simple one-command bootstrap experience in A.3.
+
+**New Terraform root:** `terraform/infisical-data/`
+
+Terraform responsibilities:
+
+- Provisions the Proxmox LXC
+- Sets hostname, CPU, memory, disk, network, on-boot behavior, and SSH public key injection
+- Optionally manages any closely coupled network identity object if needed (for example, a `unifi_user`, following the existing `glitchtip-data` / `honcho` pattern)
+- Exposes stable outputs needed by the wrapper script or later automation, such as the LXC IP address
+
+#### Terraform structure for service LXCs
+
+The Terraform refactor for service hosts should preserve the repo's current `templates -> task configure -> terraform/` workflow while removing repeated LXC boilerplate.
+
+- Add a shared template-backed Terraform module at `templates/terraform/modules/proxmox-lxc-service/`
+- Render that module to `terraform/modules/proxmox-lxc-service/`
+- Keep thin per-service Terraform roots for `glitchtip-data`, `honcho`, and `infisical-data`
+- Do **not** collapse all service LXCs into one mega-root or shared state file
+
+The shared module owns the common `proxmox_lxc` + optional `unifi_user` pattern. Each thin root keeps:
+
+- providers
+- root variables
+- one module call
+- root outputs
+
+This keeps separate Terraform state per service while making the resource logic DRY.
+
+#### Existing root migration (`glitchtip-data`, `honcho`)
+
+`glitchtip-data` and `honcho` already exist as live Terraform-managed resources, so the refactor must be a state-address migration rather than a destroy/recreate migration.
+
+- Keep `terraform/glitchtip-data/` and `terraform/honcho/` as the long-lived thin roots
+- Replace their duplicated resource blocks with a shared module call
+- Use Terraform `moved` blocks to migrate existing resource addresses into the module
+- Refactor one root at a time and require a no-create / no-destroy plan before apply
+
+Example migration shape:
+
+```hcl
+moved {
+  from = proxmox_lxc.glitchtip_data
+  to   = module.service_host.proxmox_lxc.this
+}
+
+moved {
+  from = unifi_user.glitchtip_data
+  to   = module.service_host.unifi_user.this
+}
+```
+
+Use the same pattern for `honcho`. The `moved` blocks are temporary migration scaffolding: keep them through the migration window, then remove them after the relevant state has been successfully applied through the refactored root and no untouched older state snapshots still depend on the mapping.
+
+#### Service-host config model (implemented)
+
+`config.yaml` uses a DRY service-host map. The `terraform_service_lxcs` entry for `infisical-data` was extended with nested service config — no flat `infisical_data_*` top-level vars were created. Ansible templates reference the map directly via `{% set infisical = terraform_service_lxcs['infisical-data'] %}`.
+
+```yaml
+terraform_service_lxcs:
+  glitchtip-data:
+    target_node: mia
+    hostname: glitchtip-data
+    ip: 10.0.10.83
+    # ... (existing flat vars remain for glitchtip-data and honcho until migration)
+  honcho:
+    target_node: mia
+    hostname: honcho
+    ip: 10.0.10.84
+    # ...
+  infisical-data:
+    target_node: mia
+    hostname: infisical-data
+    ip: 10.0.10.85
+    gateway: 10.0.10.1
+    storage: local-lvm
+    disk_size: 20G
+    cores: 2
+    memory_mb: 1024
+    swap_mb: 0
+    nameserver: 1.1.1.1
+    postgres:
+      db: infisical
+      user: infisical
+      port: 5432
+    redis:
+      port: 6379
+    backup:
+      enabled: true
+      nfs_server: "truenas.local.bysliek.com"
+      nfs_path: "/mnt/k8s-ssd-pool/infisical-postgres-backups"
+      retention_days: 14
+```
+
+The existing glitchtip-data and honcho flat vars remain until those roles are migrated. The nested keys (`postgres`, `redis`, `backup`) are consumed only by Ansible templates — Terraform templates ignore them.
+
+**Ansible role and playbook (implemented):**
+
+- `ansible/playbooks/infisical-data.yml` — SOPS-free playbook using `lookup('env', ...)` for secrets
+- `ansible/roles/infisical_data/` — PostgreSQL + Redis configuration role following the `glitchtip_data` pattern, simplified (single database, no `additional_databases` machinery)
+
+Key design departure: the playbook does NOT use `community.sops.load_vars`. Secrets come from environment variables (`INFISICAL_DB_PASSWORD`, `INFISICAL_REDIS_PASSWORD`) set by the bootstrap secret loader script. The playbook validates these are present via an `assert` task before proceeding.
+
+Template sources live under `templates/ansible/roles/infisical_data/` and are rendered via `task configure` (makejinja). Role tasks, handlers, and backup templates use `{% raw %}` wrapping (pass through verbatim); only `defaults/main.yaml.j2` is truly templated for IP interpolation.
+
+`community.postgresql` (v4.2.0) was added to `ansible/requirements.yml` as an explicit dependency — it was already used by `glitchtip_data` and `honcho` roles but never declared.
+
+**Bootstrap-domain guardrail:**
+
+- `terraform/infisical-data/` is a bootstrap Terraform root.
+- It must remain completely independent from self-hosted Infisical.
+- It uses only Bitwarden-fed bootstrap inputs plus the Proxmox provider and any other already-external provider required for host creation.
+- Do **not** add the Infisical Terraform provider to this root.
 
 **Host specs:**
 
@@ -391,44 +571,129 @@ Create the Infisical host via Ansible, using the Bitwarden-backed bootstrap cont
 **Backup configuration:**
 
 - Mechanism: `pg_dump` via systemd timer (same pattern as `glitchtip_data` role)
-- Schedule: daily (systemd calendar)
+- Schedule: daily at 03:45 (offset from glitchtip's 03:15 to avoid NFS contention)
 - Retention: 14 days to TrueNAS NFS mount
 - Backup script, systemd service, and timer managed by Ansible
 
-### A.3 Build a One-Command Bootstrap Flow
+**Taskfile entries (implemented):**
 
-Bootstrap should be performed through one idempotent Ansible entrypoint.
+- `terraform:init-infisical-data`, `terraform:plan-infisical-data`, `terraform:apply-infisical-data`
+- `ansible:bootstrap-infisical-data`, `ansible:configure-infisical-data`
+- `create-infisical-k8s-secrets` — creates/reconciles the K8s namespace and bootstrap Secrets
+- `deploy-infisical-data` — top-level task chaining all of the above
 
-**Bitwarden session management:**
+### A.3 Build a One-Command Bootstrap Flow ✅
 
-A wrapper script (e.g., `scripts/bootstrap-infisical.sh`) handles all Bitwarden interaction upfront. The playbook itself never touches the `bw` CLI directly, which avoids session expiry issues on long-running provisioning runs.
+**Status:** A.3 is complete. The bootstrap flow is split into two single-responsibility pieces: a secret loader script and Taskfile orchestration. The `rbw` bootstrap profile is configured and verified — all 9 Bitwarden items are readable. Dry runs pass for both the K8s secrets task (with and without env vars) and the Ansible playbook.
 
-Wrapper script flow:
-1. Unlock Bitwarden CLI (`bw unlock`, capture `BW_SESSION`).
-2. Extract all Layer 0 values into shell environment variables (`bw get` per item).
-3. Run the Ansible playbook with those env vars exported.
-4. Lock Bitwarden CLI on completion.
+**Design: SRP split instead of monolithic wrapper script**
 
-**Playbook steps:**
+The original plan proposed a single wrapper script that both loaded secrets and orchestrated the deploy. The implemented design separates these concerns:
 
-- Provision the Infisical data host if it does not already exist.
-- Create the `infisical` namespace in Kubernetes.
-- Create or reconcile the `infisical-bootstrap` Secret in Kubernetes (schema determined by Helm chart research in A.1).
-- Only after those prerequisites exist, apply or sync the ArgoCD application for Infisical server.
+1. **`scripts/load-bootstrap-secrets.sh`** — Single responsibility: load Bitwarden secrets into the current shell. Sourceable script that sets `RBW_PROFILE=bootstrap`, ensures the agent is unlocked, and exports all 9 secrets as env vars. Does not orchestrate, does not call tasks.
 
-This replaces the earlier plan to run a one-time `kubectl create secret` command manually.
+2. **`task deploy-infisical-data`** — Single responsibility: orchestrate the deploy. Chains configure → terraform → ansible → K8s secrets. Each sub-task also has a single responsibility and can be run independently.
+
+**Usage:**
+
+```bash
+source scripts/load-bootstrap-secrets.sh    # defaults to all bootstrap secret groups
+task deploy-infisical-data                   # deploy data host + bootstrap Secrets
+```
+
+Or run individual steps:
+
+```bash
+source scripts/load-bootstrap-secrets.sh
+task ansible:configure-infisical-data        # just reconfigure PostgreSQL/Redis
+task create-infisical-k8s-secrets            # just reconcile K8s bootstrap Secrets
+```
+
+**Bitwarden CLI tooling (`rbw`):**
+
+The bootstrap flow uses `rbw` — an agent-based, unofficial Bitwarden CLI available in the Arch extra repo (`pacman -S rbw`). Unlike the official `bw` CLI, `rbw` maintains a background agent process (similar to `ssh-agent`) that holds decryption keys in memory, eliminating manual session token management (`BW_SESSION` export, session expiry, npm global install).
+
+A dedicated `RBW_PROFILE=bootstrap` profile is configured to point at Bitwarden cloud (the Layer 0 trust root). Each rbw profile uses its own separate configuration, local vault, and agent instance, so the bootstrap profile is fully isolated from any personal or Vaultwarden-pointing profile the operator may also use.
+
+**One-time setup (per workstation):**
+
+1. `pacman -S rbw`
+2. `RBW_PROFILE=bootstrap rbw config set email <bootstrap-account-email>` (base_url defaults to Bitwarden cloud)
+3. `RBW_PROFILE=bootstrap rbw register` (required for official Bitwarden server bot-detection)
+4. `RBW_PROFILE=bootstrap rbw login`
+5. `RBW_PROFILE=bootstrap rbw unlock`
+6. `RBW_PROFILE=bootstrap rbw sync`
+
+After this, `RBW_PROFILE=bootstrap rbw get <item>` works without session tokens.
+
+**Secret loader script (`scripts/load-bootstrap-secrets.sh`):**
+
+```bash
+source scripts/load-bootstrap-secrets.sh
+```
+
+Exports:
+
+```bash
+# Terraform secrets (TF_VAR_ prefix → auto-consumed by Terraform)
+TF_VAR_pm_api_token_id        # from homelab/bootstrap/proxmox-api-token-id
+TF_VAR_pm_api_token_secret    # from homelab/bootstrap/proxmox-api-token
+TF_VAR_cipassword             # from homelab/bootstrap/proxmox-cipassword
+TF_VAR_unifi_username         # from homelab/bootstrap/unifi-username
+TF_VAR_unifi_password         # from homelab/bootstrap/unifi-password
+
+# Infisical application secrets (consumed by Ansible and kubectl)
+INFISICAL_DB_PASSWORD          # from homelab/bootstrap/infisical-db-password
+INFISICAL_ENCRYPTION_KEY       # from homelab/bootstrap/infisical-encryption-key
+INFISICAL_AUTH_SECRET          # from homelab/bootstrap/infisical-auth-secret
+INFISICAL_REDIS_PASSWORD       # from homelab/bootstrap/infisical-redis-password
+```
+
+The `TF_VAR_` prefix is a Terraform convention: any env var matching `TF_VAR_<variable_name>` automatically populates the corresponding `variable "<variable_name>"` block. This eliminates `.auto.tfvars` files for secrets entirely — no secret touches disk and nothing gets committed.
+
+Non-secret infrastructure shape variables (`pm_api_url`, `ssh_key_file`, `template_name`, `unifi_api_url`) are safe to keep in a committed `.auto.tfvars` file or pass via `-var-file`. Only values sourced from Bitwarden flow through `TF_VAR_` env vars.
+
+Later, after A.7 creates the Ansible and Terraform machine identities inside Infisical, Bitwarden also becomes the storage location for those post-bootstrap workstation credentials.
+
+**Orchestration via Taskfile (`task deploy-infisical-data`):**
+
+The deploy task chains all steps in order:
+
+1. `task configure` — render templates
+2. `task terraform:init-infisical-data` — init Terraform
+3. `task terraform:apply-infisical-data` — provision/reconcile LXC
+4. `task ansible:bootstrap-infisical-data` — create ansible user, deploy SSH key
+5. `task ansible:configure-infisical-data` — configure PostgreSQL, Redis, backups
+6. `task create-infisical-k8s-secrets` — create/reconcile namespace and bootstrap Secrets
+
+The loader defaults to `all` when called with no arguments and now fails immediately if any `rbw get` call returns an error or an empty secret. The `deploy-infisical-data` task also performs workstation and cluster preflight checks before provisioning begins.
+
+**K8s bootstrap Secrets created by `create-infisical-k8s-secrets`:**
+
+| K8s Secret | Key | Source |
+|---|---|---|
+| `infisical-secrets` | `ENCRYPTION_KEY` | `$INFISICAL_ENCRYPTION_KEY` |
+| `infisical-secrets` | `AUTH_SECRET` | `$INFISICAL_AUTH_SECRET` |
+| `infisical-secrets` | `REDIS_URL` | composed: `redis://:${INFISICAL_REDIS_PASSWORD}@10.0.10.85:6379` |
+| `infisical-secrets` | `SITE_URL` | static: `https://infisical.local.bysliek.com` |
+| `infisical-postgres-connection` | `connectionString` | composed: `postgresql://infisical:${INFISICAL_DB_PASSWORD}@10.0.10.85:5432/infisical?sslmode=disable` |
+
+Both secrets use `kubectl create --dry-run=client -o yaml | kubectl apply -f -` for idempotency.
 
 ### A.4 Deploy Infisical Server on K8s
 
 Create `kubernetes/infrastructure/infisical/` with a Helm-based ArgoCD Application.
 
-**Helm chart:** `https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/`
+**Helm chart:** `oci://helm.oci.cloudsmith.io/infisical/helm-charts/infisical-standalone`
+
+**Pinned chart version:** `1.8.0`
 
 **Helm values:**
 
 ```yaml
 infisical:
   replicaCount: 1
+  kubeSecretRef: infisical-secrets
   resources:
     requests:
       cpu: 100m
@@ -439,22 +704,23 @@ infisical:
 
 postgresql:
   enabled: false # external, on dedicated LXC
+  useExistingPostgresSecret:
+    enabled: true
+    existingConnectionStringSecret:
+      name: infisical-postgres-connection
+      key: connectionString
+
 redis:
   enabled: false # external, on dedicated LXC
-
-infisicalEnv:
-  ENCRYPTION_KEY: <from-bitwarden-bootstrap>
-  AUTH_SECRET: <generated-jwt-secret>
-  DB_CONNECTION_URI: postgresql://<user>:<pass>@10.0.10.85:5432/infisical
-  REDIS_URL: redis://:<redis-password>@10.0.10.85:6379
-  SITE_URL: https://infisical.local.bysliek.com
 ```
 
-**Bootstrap ordering:** The `infisical-bootstrap` Secret must be created by the Ansible bootstrap flow before the ArgoCD application syncs, otherwise the server pods will start without the required connection settings.
+The `infisical-secrets` Secret provides `ENCRYPTION_KEY`, `AUTH_SECRET`, `REDIS_URL`, and `SITE_URL` through `envFrom`. The `infisical-postgres-connection` Secret provides `DB_CONNECTION_URI` through the chart's `useExistingPostgresSecret` hook.
+
+**Bootstrap ordering:** Both bootstrap Secrets (`infisical-secrets` and `infisical-postgres-connection`) must be created by the Ansible bootstrap flow before the ArgoCD application syncs, otherwise the server pods will start without the required connection settings.
 
 **ArgoCD project config:**
 
-- Add Infisical Helm chart repo to `spec.sourceRepos` in infrastructure project
+- Add the Infisical OCI chart registry/repo used for `oci://helm.oci.cloudsmith.io/infisical/helm-charts/infisical-standalone` to `spec.sourceRepos` in the infrastructure project
 - Add `infisical` namespace to `spec.destinations`
 
 **Ingress:**
@@ -468,6 +734,8 @@ infisicalEnv:
 Manual one-time task: enter all current secret values from the current repo-managed sources into Infisical UI or API, organized by the path structure defined above.
 
 This is a one-time data migration, not a long-term workflow.
+
+**Inventory rule for implementation:** treat the current source as the actual live artifact or role input that exists in this repo today, not just the historical variable origin. For ArgoCD in particular, the migration checklist must reference the rendered Kubernetes secret artifacts that are currently applied as well as any backing Ansible role inputs.
 
 **Secret inventory (complete checklist):**
 
@@ -489,24 +757,20 @@ This is a one-time data migration, not a long-term workflow.
 | `/kubernetes/glitchtip` | `BOOTSTRAP_PROJECT_PLATFORM` | `config.yaml` | A.9 |
 | `/kubernetes/glitchtip` | `BOOTSTRAP_MCP_TOKEN` | `config.yaml` (`glitchtip_bootstrap_mcp_token`) | A.9 |
 | `/kubernetes/glitchtip` | (remaining glitchtip fields) | `config.yaml` | A.9 |
-| `/kubernetes/argocd` | `admin_password` | `config.yaml` (`argocd_admin_password`) | A.10 (bootstrap path) |
-| `/kubernetes/argocd` | `repo_credentials` | `ansible/roles/argocd/defaults/main.sops.yaml` | A.10 (bootstrap path) |
-| `/kubernetes/argocd` | `ghcr_registry` | `ansible/roles/argocd/defaults/main.sops.yaml` | A.10 (bootstrap path) |
-| `/ansible/cloudflare` | `email`, `api_token`, `tunnel_json` | `ansible/roles/cloudflare/defaults/main.sops.yaml` | A.10 |
+| `/kubernetes/argocd` | `admin_password_hash` | `kubernetes/core/argo-cd/secrets.sops.yaml` and `ansible/roles/argocd/defaults/main.sops.yaml` | A.10 (bootstrap path) |
+| `/kubernetes/argocd` | `repo_credentials` | `kubernetes/core/argo-cd/secrets.sops.yaml` | A.10 (bootstrap path) |
+| `/kubernetes/argocd` | `ghcr_registry` | `kubernetes/core/argo-cd/secrets/ghcr-registry.secret.yaml` | A.10 (bootstrap path) |
+| `/kubernetes/deeptutor` | `LLM_BINDING_API_KEY` | `config.yaml` | A.9 |
+| `/kubernetes/deeptutor` | `EMBEDDING_BINDING_API_KEY` | `config.yaml` | A.9 |
+| `/kubernetes/deeptutor` | `PERPLEXITY_API_KEY` | `config.yaml` | A.9 |
+| `/ansible/cloudflare` | `email`, `api_token` | `ansible/roles/cloudflare/defaults/main.sops.yaml` | A.10 |
+| `/ansible/cloudflare` | `tunnel_json` | `ansible/roles/cloudflare/files/cloudflare-tunnel.sops.json` | A.10 |
 | `/ansible/cert-manager` | (cert-manager role vars) | `ansible/roles/cert-manager/defaults/main.sops.yaml` | A.10 |
 | `/ansible/proxmox` | `cipassword` | `ansible/inventory/group_vars/all.sops.yaml` | A.10 |
 | `/ansible/services` | `honcho_*`, `glitchtip_*` service secrets | `ansible/group_vars/services.sops.yaml` | A.10 |
 | `/terraform/cloudflare` | `cloudflare_email`, `cloudflare_apikey`, `cloudflare_domain` | `terraform/cloudflare/secret.sops.yaml` | A.11 |
 | `/terraform/unifi` | `password`, `api_url`, `wlan_passphrase` | `terraform/unifi/` vars | A.11 |
 | `/terraform/proxmox` | `api_token_secret`, `password`, `cipassword` | `terraform/proxmox-nodes/` vars | A.11 |
-
-**Deferred (not part of initial population):**
-
-| Infisical Path | Secret Key | Current Source | Notes |
-|---|---|---|---|
-| `/kubernetes/deeptutor` | `LLM_BINDING_API_KEY` | `config.yaml` | Deferred until deeptutor redesign |
-| `/kubernetes/deeptutor` | `EMBEDDING_BINDING_API_KEY` | `config.yaml` | Deferred until deeptutor redesign |
-| `/kubernetes/deeptutor` | `PERPLEXITY_API_KEY` | `config.yaml` | Deferred until deeptutor redesign |
 
 ### A.6 Deploy Infisical Operator
 
@@ -542,6 +806,12 @@ resource.exclusions: |
 
 This is precise — only Secrets created by the Infisical Operator (via labeled CRDs) are excluded. ArgoCD's own Secrets in the argocd namespace are unaffected.
 
+**ArgoCD project policy updates required before app migration:**
+
+- Add `secrets.infisical.com` / `InfisicalSecret` to any AppProject that will own these CRDs during Phase A.
+- At minimum, update the `apps` AppProject before migrating GlitchTip.
+- Keep app-specific `InfisicalSecret` manifests next to the app that consumes them; do not introduce a second Argo application topology just for secret sync.
+
 **InfisicalSecret manifest template (all CRDs must follow this pattern):**
 
 ```yaml
@@ -558,7 +828,9 @@ spec:
 
 ### A.7 Create Machine Identities
 
-Create three separate machine identities in Infisical, each scoped to the minimum paths it needs:
+Create three separate machine identities in Infisical, each scoped to the minimum paths it needs.
+
+This step is where the workstation credentials that were intentionally omitted from A.1 are first created. After each identity is created, copy its non-bootstrap client credentials into Bitwarden cloud so future workstation runs still have an external trust root.
 
 **1. Kubernetes Operator Identity (K8s Auth)**
 
@@ -572,15 +844,15 @@ Create three separate machine identities in Infisical, each scoped to the minimu
 - Auth method: Universal Auth (client_id + client_secret)
 - Scoped to: `/ansible/*` and `/kubernetes/argocd/*` paths in `homelab` project
 - Used by: Ansible playbooks running on workstation
-- `client_id` and `client_secret` stored in Bitwarden cloud Layer 0
-- Injected as `INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET` env vars by the bootstrap wrapper script
+- `client_id` and `client_secret` are created here, then stored in Bitwarden cloud as post-bootstrap external workstation credentials
+- Injected as `INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET` env vars by the bootstrap wrapper script for steady-state Ansible runs
 
 **3. Terraform Identity (Universal Auth)**
 
 - Auth method: Universal Auth (client_id + client_secret)
 - Scoped to: `/terraform/*` paths in `homelab` project
 - Used by: Terraform runs on workstation
-- `client_id` and `client_secret` stored in Bitwarden cloud Layer 0
+- `client_id` and `client_secret` are created here, then stored in Bitwarden cloud as post-bootstrap external workstation credentials
 - Passed as `var.infisical_client_id` / `var.infisical_client_secret`
 
 Ansible and Terraform credentials cannot live in Infisical without creating a circular dependency — they must be in Bitwarden.
@@ -599,9 +871,19 @@ The canary InfisicalSecret is **permanent** — it stays deployed after the init
 
 Do not start real application migration until this canary path works end to end.
 
+**Secret-readiness rule for all Phase A app migrations:**
+
+Do not rely on ArgoCD sync waves alone to prove that an operator-managed Secret is ready. `InfisicalSecret` reconciliation is asynchronous. For any app or hook job that must consume the resulting Kubernetes Secret during sync, use a standard readiness gate:
+
+1. Apply the `InfisicalSecret` manifest first.
+2. Add a reusable `PreSync` wait Job convention that blocks until the expected native Kubernetes Secret exists (and, if needed, contains the expected keys).
+3. Only then allow the consuming workload, Helm release, or bootstrap job to proceed.
+
+This keeps the current app auto-discovery model intact and avoids introducing a separate Argo application topology just to sequence secret sync.
+
 ### A.9 Migrate Kubernetes Secrets (Per-App)
 
-DeepTutor is part of the retained app set, but its redesign and secret migration are explicitly deferred. Do not let DeepTutor block the initial Infisical rollout or the first wave of Kubernetes secret migrations.
+DeepTutor is part of the retained app set. Its broader redesign/upgrade remains deferred, but its current three runtime API-key secrets should still migrate during Phase A so the Sealed Secrets controller can be removed globally.
 
 **Migration pattern:**
 
@@ -644,18 +926,31 @@ spec:
 
 The `identityId` is the K8s Operator machine identity created in A.7. It is a public identifier (not a secret) and is hardcoded in each InfisicalSecret manifest.
 
+**Placement and sequencing rules:**
+
+- Keep each `InfisicalSecret` manifest in the same app directory as the workload that consumes it.
+- Update the owning AppProject to allow `secrets.infisical.com` resources before applying the CRD.
+- For apps that currently assume a secret exists during sync (for example, cert-manager and GlitchTip), pair the `InfisicalSecret` with the standard `PreSync` wait Job convention from A.8 rather than relying on sync waves alone.
+
+**Hard gate before A.12.2 (Sealed Secrets removal):**
+
+Do **not** remove the Sealed Secrets controller until every app that currently depends on a SealedSecret has a verified replacement native Kubernetes Secret already present via the new mechanism. At minimum, Phase A must verify replacement Secrets for:
+
+- cert-manager
+- glitchtip
+- deeptutor
+
+Use `kubectl get secret -A` and the app-specific readiness checks to confirm the replacement Secrets exist before touching A.12.2.
+
 **Apps to migrate via InfisicalSecret CRDs (in order):**
 
 1. **cert-manager** — 2 secrets (cloudflare_api_token, cloudflare_email). Low secret count, existing certs buffer any issues during migration.
 2. **glitchtip** — 10+ secrets (DB, Redis, email, admin creds). Largest migration, most complex.
+3. **deeptutor** — 3 API-key secrets only. Migrate the current secret contract without redesigning or upgrading the app in this plan.
 
 **Not migrated via InfisicalSecret CRDs:**
 
 - **argo-cd** — ArgoCD secrets are created by the Ansible bootstrap flow (A.10), not by the Infisical Operator. ArgoCD needs its secrets before the operator exists, and having the operator manage Secrets in the argocd namespace risks ownership conflicts with ArgoCD's own secret management. Values are stored in Infisical at `/kubernetes/argocd` for Ansible to look up, but no InfisicalSecret CRD is created in the argocd namespace.
-
-**Deferred follow-up app:**
-
-- **deeptutor** — Revisit after the initial Infisical rollout is proven on other applications. At that point, use the working secret-manager patterns to redesign the app cleanly, upgrade it if desired, and then migrate its secrets with better context.
 
 **Per-app cleanup:**
 
@@ -693,6 +988,8 @@ ArgoCD secrets are NOT managed by the Infisical Operator (see A.9). Instead, the
 - The `argocd` Ansible role replaces its `main.sops.yaml` with Infisical lookups using the Ansible machine identity.
 - ArgoCD secrets (admin password, repo creds, GHCR registry) are created as K8s Secrets by Ansible, not by the Infisical Operator.
 - ArgoCD continues to manage its own secrets in its namespace without operator interference.
+- The Infisical value for the admin credential is a **precomputed bcrypt hash** stored as `admin_password_hash`, not a plaintext password.
+- The Ansible role should pass that stored hash straight through to ArgoCD rather than generating a fresh hash during rendering or apply time.
 
 Cloudflare tunnel JSON handling:
 
@@ -725,10 +1022,11 @@ vars:
     url='https://infisical.local.bysliek.com') }}"
 ```
 
-**Roles to migrate:**
+**Roles and live secret inputs to migrate:**
 
 - `ansible/roles/argocd/defaults/main.sops.yaml`
 - `ansible/roles/cloudflare/defaults/main.sops.yaml`
+- `ansible/roles/cloudflare/files/cloudflare-tunnel.sops.json`
 - `ansible/roles/cert-manager/defaults/main.sops.yaml`
 - `ansible/group_vars/services.sops.yaml`
 - `ansible/inventory/group_vars/all.sops.yaml`
@@ -772,16 +1070,38 @@ ephemeral "infisical_secret" "cloudflare_api" {
 
 Keeps secrets out of `terraform.tfstate` entirely.
 
+#### Terraform bootstrap/state boundary
+
+The shared service-host Terraform module is for infrastructure shape only. Do not push application/bootstrap secrets down into it.
+
+- The bootstrap root `terraform/infisical-data/` remains completely independent from self-hosted Infisical
+- Do **not** add the Infisical provider to `terraform/infisical-data/`
+- Do **not** put secrets in `infisical-data.auto.tfvars` — all secret variables (`pm_api_token_id`, `pm_api_token_secret`, `cipassword`, `unifi_username`, `unifi_password`) must flow exclusively through `TF_VAR_` env vars exported by the wrapper script
+- A committed `.auto.tfvars` file may contain **only** non-secret infrastructure shape variables: `pm_api_url`, `ssh_key_file`, `template_name`, `unifi_api_url`
+- The `.auto.tfvars.j2` template must be updated (or replaced with a non-secret-only version) to reflect this split
+- Mark secret variables in `variables.tf` with `sensitive = true` so Terraform redacts them from plan/apply output
+- Avoid passing DB password, Redis password, `AUTH_SECRET`, or `ENCRYPTION_KEY` through Terraform resources or outputs unless strictly required
+
+Use the Infisical Terraform provider and ephemeral secret resources only for steady-state Terraform paths after self-hosted Infisical is healthy. The shared module and the bootstrap root must stay usable without Infisical.
+
 **Configs to migrate:**
 
+Phase A covers every repo-managed Terraform input currently known to contain a secret. Do not leave plaintext `tfvars` / `auto.tfvars` behind accidentally. If any path is intentionally deferred, name it explicitly in this section before implementation starts.
+
+Current known Terraform secret-bearing inputs:
+
 - `terraform/cloudflare/secret.sops.yaml`
-- `terraform/unifi/` (UniFi controller credentials)
-- `terraform/proxmox-nodes/` (Proxmox API tokens)
+- `terraform/unifi/terraform.tfvars`
+- `terraform/kubernetes-nodes/terraform.tfvars`
+- `terraform/glitchtip-data/glitchtip-data.auto.tfvars`
+- `terraform/honcho/honcho.auto.tfvars`
+- `terraform/proxmox-nodes/` variable injection path for Proxmox credentials
 
 **Cleanup:**
 
 - Delete all `secret.sops.yaml` in terraform/
 - Remove SOPS provider configuration
+- Remove any temporary `*.auto.tfvars` secret inputs that have been replaced by Infisical lookups or ephemeral resources
 
 ### A.12 Phase A Cleanup
 
@@ -800,6 +1120,12 @@ The ArgoCD deployment has deep helm-secrets integration that requires a dedicate
 
 - The "Create age key secret for helm-secrets" task
 
+**Rewrite `templates/kubernetes/core/argo-cd/app.yaml.j2`:**
+
+- Remove the `helm.valueFiles` entry that calls `build_helm_secrets_path(...)`
+- Stop referencing `secrets.sops.yaml` as a remote helm-secrets value file
+- Ensure the ArgoCD application definition no longer depends on helm-secrets, SOPS, Age, or the helper function in `makejinja/plugin.py`
+
 **Remove from `ansible/roles/argocd/defaults/main.sops.yaml` (file deleted entirely in A.10):**
 
 - `helm_secrets_age_key_secret_name`
@@ -810,6 +1136,10 @@ The ArgoCD deployment has deep helm-secrets integration that requires a dedicate
 - `helm_secrets_age_key_secret_name`
 - `helm_secrets_age_key_name`
 
+**Remove from `ansible/roles/k3s/tasks/main.yaml`:**
+
+- The Helm Secrets plugin installation task
+
 **Verify after teardown:**
 
 - ArgoCD starts without the init container or volume mounts
@@ -818,85 +1148,148 @@ The ArgoCD deployment has deep helm-secrets integration that requires a dedicate
 
 #### A.12.2 Sealed Secrets Removal
 
+**Hard gate before teardown:**
+
+- Do **not** begin A.12.2 until every current SealedSecret consumer has a verified replacement native Kubernetes Secret already present
+- Verify this explicitly for `cert-manager`, `glitchtip`, and `deeptutor`
+- Remove old SealedSecret artifacts only after the replacement Secrets are present and the consuming apps remain healthy
+
 - Delete `kubernetes/core/sealed-secrets/` (entire directory)
 - Delete `templates/kubernetes/core/sealed-secrets/` if it exists
-- Remove `SealedSecret` from the apps ArgoCD project whitelist (`kubernetes/bootstrap/projects/apps.yaml` line 57)
-- Remove `bitnami-labs/sealed-secrets` chart repo from core ArgoCD project's `spec.sourceRepos`
-- Delete `.sealed-secrets-public-cert.pem`
+- Remove `SealedSecret` from the apps ArgoCD project whitelist (`kubernetes/bootstrap/projects/apps.yaml`)
+- Remove the SealedSecret-specific `ignoreDifferences` rule from `kubernetes/bootstrap/applicationsets/cluster-apps.yaml` after Sealed Secrets are gone
+- Remove `bitnami-labs/sealed-secrets` chart repo from both the core and infrastructure ArgoCD projects' `spec.sourceRepos`
+- Delete `.sealed-secrets-public-cert.pem` only after all `seal_secret()`-backed templates are gone from the active render path
 - Remove `seal_secret()` function from `makejinja/plugin.py`
 - Remove `kubeseal_version` and `sealed_secrets_chart_version` from `config.yaml`
 
-#### A.12.3 SOPS/Age Removal
+#### A.12.3 SOPS/Age Removal + Deterministic Template Rendering
 
-- Delete root `.sops.yaml` (the `templates/.sops.yaml` and `tmpl/.sops.yaml` survive until Phase B deletes those directories)
+- Delete root `.sops.yaml`
+- Delete obsolete `templates/.sops.yaml` and `tmpl/.sops.yaml`
 - Delete `.taskfiles/SecretTasks.yaml`
 - Remove `encrypt-secrets` task from `Taskfile.yml`
+- Rewrite `task configure` so that Phase A keeps it for non-secret work only (`render-templates` + `download-cert-manager-crds`) and no longer invokes any SOPS/Age encryption flow
+- Keep `task configure` rendering the non-secret Kubernetes, Ansible, and Terraform layers, including the shared `proxmox-lxc-service` module and the thin service roots
 - Remove `sops_age_key_file` and any Age-related variables from `config.yaml`
-- Remove all secret values from `config.yaml` (non-secret variables remain)
+- Remove all secret values from `config.yaml` (non-secret variables remain, including the service-host catalog used by Terraform/Ansible rendering)
+- Remove `bcrypt_password()` from `makejinja/plugin.py`
+- Remove `seal_secret()` from `makejinja/plugin.py`
+- Verify no active template render path remains nondeterministic
 
 #### A.12.4 Remaining Cleanup
 
-- Remove `build_helm_secrets_path()` function from `makejinja/plugin.py`
+- Remove `build_helm_secrets_path()` function from `makejinja/plugin.py` only after `templates/kubernetes/core/argo-cd/app.yaml.j2` no longer calls it
+- Add the required `InfisicalSecret` allowlists to the owning AppProjects and remove obsolete SealedSecret policy rules
 - Remove any `community.sops` references from Ansible requirements or configuration
-- Verify no `.sops.yaml`, `.secret.yaml`, or Age key references remain in tracked files
+- Verify no `.sops.yaml`, `.secret.yaml`, `kubeseal`, `bcrypt_password`, or Age key references remain in tracked files
+
+#### A.12.5 Evaluate makejinja Replacement (Deferred)
+
+After the secret-path plugin functions are removed, the remaining rendering surface is straightforward Jinja2 + YAML. `makejinja` is a niche Python tool with a small user base that requires `pipx`, Python, and injected dependencies (`bcrypt`, `attrs`, `pyyaml`). This creates operational friction — `task configure` cannot run on the host workstation without the devcontainer or a manual `pipx install` chain.
+
+Evaluate replacing `makejinja` with a more portable alternative:
+
+- A minimal Python script (the actual rendering logic is ~50 lines)
+- A standalone CLI like `j2cli` or `jinja2-cli`
+- A vendored Go binary for zero-dependency rendering
+
+The goal is to preserve the `config.yaml` + `task configure` pattern (centralized non-secret config rendered across Kubernetes, Ansible, and Terraform) while removing the niche tooling dependency. The pattern is valuable; the tool is the liability.
 
 **What survives Phase A:**
 
 - `config.yaml` (non-secret variables only)
-- `makejinja` (renders non-secret templates, minus `seal_secret` and `build_helm_secrets_path`)
-- `templates/.sops.yaml` and `tmpl/.sops.yaml` (dead files, removed with their parent directories in Phase B)
+- `makejinja` (renders non-secret templates, minus `bcrypt_password`, `seal_secret`, and `build_helm_secrets_path`) — candidate for replacement in A.12.5
+- `task configure` (non-secret rendering only)
 
 Nothing from the old SOPS or Age toolchain is functional after Phase A.
 
----
+### A.13 Trust Chain Heartbeat
 
-## Phase B: Eliminate Template Pipeline
+The DR runbook written at the end of Phase A is a static document. It proves nothing until someone executes it — and by that time you're in a disaster. The canary InfisicalSecret from A.8 validates one leg of the trust chain (Infisical Operator → K8s Secret) but leaves the rest unmonitored. A.13 closes this gap with a scheduled validation that continuously proves the full Bitwarden → Infisical → K8s/Ansible/Terraform trust chain is live and recoverable.
 
-Replace all remaining `.j2` templates with static files and remove makejinja + config.yaml entirely.
+This is what converts the DR runbook from a hope-based recovery strategy into an evidence-based one.
 
-### B.1 Convert Kubernetes Templates
+#### What it validates
 
-For each file in `templates/kubernetes/**/*.j2`:
+The heartbeat checks each trust layer independently. A failure in any leg is actionable on its own.
 
-- Render the template one final time with current values
-- Replace Jinja2 expressions with literal values
-- Move from `templates/kubernetes/` to `kubernetes/` (or confirm the static file is already correct)
-- Delete the `.j2` source
+**Leg 1 — Layer 0 (Bitwarden cloud):**
 
-Non-secret variables (chart versions, domains, CIDRs, namespaces) become hardcoded in the static manifests. Changes to these values mean editing the manifest directly.
+- All 5 initial bootstrap items from A.1 exist and are readable (`homelab/bootstrap/infisical-*`, `homelab/bootstrap/proxmox-api-token`)
+- All 4 post-bootstrap workstation credentials from A.7 exist and are readable (Ansible + Terraform machine identity `client_id` / `client_secret`)
+- Validates: the external trust root has not silently degraded (accidental deletion, Bitwarden org policy changes, item corruption)
 
-### B.2 Convert Ansible Templates
+**Leg 2 — Layer 1 health (Infisical):**
 
-For each file in `templates/ansible/**/*.j2`:
+- Infisical API returns healthy (`GET /api/status` or equivalent health endpoint)
+- Infisical PostgreSQL accepts connections from the LXC (basic `pg_isready` or equivalent)
+- Canary secret round-trip: write a timestamped nonce to a dedicated `/heartbeat` path in Infisical, read it back, verify match, delete it
+- Validates: the secret management server itself is operational, not just reachable
 
-- Render with current values
-- Replace with static Ansible vars files
-- Non-secret config goes into `group_vars/` or role `defaults/` as plain YAML
+**Leg 3 — Layer 1 → Layer 2 (Kubernetes):**
 
-### B.3 Convert Terraform Templates
+- K8s Operator machine identity can authenticate to Infisical
+- The permanent canary InfisicalSecret from A.8 has reconciled within the expected window (check `secrets.infisical.com/version` annotation timestamp)
+- Validates: the operator path that all K8s apps depend on is functional end-to-end
 
-For each file in `templates/terraform/**/*.j2`:
+**Leg 4 — Layer 1 → Layer 2 (Ansible):**
 
-- Render with current values
-- Replace with static `.tfvars` or variable definitions
+- Ansible machine identity (`INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET` from Bitwarden) can authenticate to Infisical
+- A read from `/ansible/cloudflare` (or any known populated path) returns a non-empty result
+- Validates: workstation-driven Ansible runs will not fail at secret lookup time
 
-### B.4 Remove Template Infrastructure
+**Leg 5 — Layer 1 → Layer 2 (Terraform):**
 
-Delete:
+- Terraform machine identity can authenticate to Infisical
+- A read from `/terraform/cloudflare` (or any known populated path) returns a non-empty result
+- Validates: workstation-driven Terraform runs will not fail at secret lookup time
 
-- `templates/` directory (entire tree)
-- `makejinja/` directory (binary + plugin)
-- `makejinja.toml`
-- `config.yaml`
-- Template-related tasks from `Taskfile.yml`
-- `task configure` becomes unnecessary (or reduced to any remaining non-secret residual work)
+**Leg 6 — Backup chain:**
 
-### B.5 Update Taskfile
+- TrueNAS NFS mount is accessible from the Infisical LXC
+- Most recent `pg_dump` file exists and is less than 26 hours old (allows for daily schedule + margin)
+- Backup file is non-empty and passes basic integrity check (`pg_restore --list` against the dump)
+- Validates: if Legs 1-5 all fail simultaneously, the recovery path still works
 
-`task configure` either:
+#### Implementation
 
-- Gets removed entirely (git push is the deployment mechanism)
-- Gets reduced to a minimal task that does not manage encrypted secrets
+The heartbeat is a single script (~80-120 lines of bash) that runs each leg sequentially and reports per-leg pass/fail. No new infrastructure — it uses tools already present in the stack.
+
+**Runtime environment:** K8s CronJob in a utility namespace (e.g., `infisical` or a dedicated `heartbeat` namespace). The CronJob pod needs:
+
+- `rbw` CLI (Bitwarden, `RBW_PROFILE=bootstrap`) — for Leg 1
+- `curl` — for Leg 2 (Infisical API)
+- `kubectl` access — for Leg 3 (canary check)
+- Infisical SDK or `curl` with Universal Auth — for Legs 4-5
+- SSH or NFS access to the Infisical LXC — for Leg 6 (backup check)
+
+Alternative: run from the workstation as a systemd timer if the K8s CronJob approach creates too many access-boundary complications. The workstation already has `rbw`, `kubectl`, `ssh`, and network access to everything. A workstation timer is simpler to bootstrap and avoids putting Bitwarden credentials inside the cluster.
+
+**Schedule:** Daily. The heartbeat does not need to run more frequently — its purpose is to detect silent rot over days/weeks, not minute-level outages. The canary InfisicalSecret already covers real-time operator health.
+
+**Alerting:** On any leg failure, POST to GlitchTip (already deployed). The alert should identify which specific leg failed so the operator can triage without re-running the full check.
+
+**Bootstrap dependency:** The heartbeat itself depends on Infisical being deployed and all machine identities existing. It cannot run until after A.8 (canary validated) and A.7 (identities created). It should be deployed as one of the last Phase A deliverables, after the migration is complete but before Phase A is declared done.
+
+#### What this catches that the current plan does not
+
+| Silent failure mode | Current detection | With heartbeat |
+|---|---|---|
+| Bitwarden item accidentally deleted | None — discovered during DR | Leg 1 fails next daily run |
+| Machine identity token expired | None — discovered when Ansible/Terraform fails | Legs 4-5 fail next daily run |
+| Infisical DB silently corrupted | None — discovered when operator can't reconcile | Leg 2 fails (round-trip check) |
+| TrueNAS backup job silently stopped | None — discovered during DR restore | Leg 6 fails next daily run |
+| Infisical LXC disk full (backups can't write) | None — discovered when backup restore fails | Leg 6 fails (backup age check) |
+| Operator service account misconfigured after cluster change | Canary goes stale (A.8) | Leg 3 explicitly checks + Leg 3 gives richer diagnostics |
+| Workstation credentials out of sync with Infisical | None — discovered when Ansible run fails | Legs 4-5 fail with auth error |
+
+#### Operational rules
+
+- The heartbeat script is committed to the repo (e.g., `scripts/trust-chain-heartbeat.sh`)
+- The heartbeat is not a substitute for the DR runbook — the runbook documents the full recovery procedure; the heartbeat proves the chain is intact so the runbook will work when needed
+- If a leg fails, fix the root cause. Do not suppress or skip legs.
+- The heartbeat itself has no secrets hardcoded — it reads Bitwarden credentials at runtime via `rbw` with `RBW_PROFILE=bootstrap` (same pattern as the bootstrap wrapper) and uses in-cluster auth for K8s checks
 
 ---
 
@@ -917,17 +1310,18 @@ Removed: Sealed Secrets controller (~50m CPU, 64Mi RAM)
 
 | Risk                                               | Impact   | Mitigation                                                                                                                                       |
 | -------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Bitwarden cloud is unavailable during DR           | Medium   | Keep the Layer 0 secret set minimal, document the exact bootstrap set, and verify periodic recovery from a clean workstation.                    |
+| Bitwarden cloud is unavailable during DR           | Medium   | Keep the external Bitwarden-held secret set minimal, document the initial bootstrap secrets and post-bootstrap workstation credentials clearly, and verify periodic recovery from a clean workstation.                    |
 | Infisical LXC down = no new deployments            | High     | K8s Secrets persist after sync; running pods unaffected. Only new deployments/Ansible/Terraform fail. TrueNAS backups enable restore.            |
 | Database corruption/loss                           | Critical | Regular PostgreSQL backups to TrueNAS and a documented rebuild procedure from Bitwarden bootstrap secrets.                                       |
 | Infisical project abandoned                        | Medium   | MIT licensed, can fork. InfisicalSecret CRDs create standard K8s Secrets — easy to migrate to another tool.                                      |
 | Migration window (both systems running)            | Low      | Phased migration, no big-bang cutover.                                                                                                           |
-| Ansible/Terraform need network access to Infisical | Medium   | Infisical is on the local network; Bitwarden handles only the minimal bootstrap set.                                                             |
+| Ansible/Terraform need network access to Infisical | Medium   | Infisical is on the local network; Bitwarden holds only the initial bootstrap secrets plus the post-bootstrap workstation credentials.                                                             |
 | Free tier feature limits                           | Low      | Secret rotation, dynamic secrets, PKI are enterprise. Static secret management covers current use case.                                          |
 | ArgoCD prunes operator-managed Secrets             | Medium   | Label-based resource exclusion (`app.kubernetes.io/managed-by: infisical-operator`) configured in A.6. All InfisicalSecret CRDs must carry this label. |
 | DeepTutor latest release changes runtime contract  | Medium   | Keep DeepTutor out of the initial critical path, then revisit it later once Infisical patterns are established and the app can be redesigned deliberately. |
 | One or two SOPS edge cases survive unnoticed       | Medium   | Explicitly track the bootstrap password path and the Cloudflare tunnel JSON until they have a final replacement.                                 |
-| Phase B scope creep (template elimination)         | Medium   | Treat Phase B as scheduled follow-through, not optional cleanup, because the main maintenance win comes from removing makejinja and config.yaml. |
+| A secret-path helper survives in active templates | Medium   | Explicitly remove `encrypt-secrets`, `seal_secret()`, and `bcrypt_password()` from the active render path and verify `task configure` no longer creates churn without real config changes. |
+| Trust chain silently degrades between DR tests    | High     | Daily trust chain heartbeat (A.13) validates all 6 legs from Bitwarden through backups; GlitchTip alerts on any failure within one cycle. |
 
 ---
 
@@ -937,13 +1331,14 @@ Before Phase A is considered complete, write and maintain a DR runbook that can 
 
 Minimum checklist:
 
-1. Unlock Bitwarden CLI.
-2. Export or inject the Layer 0 bootstrap secrets and workstation machine identity credentials.
-3. Run the Infisical bootstrap playbook.
+1. Unlock `rbw` agent with `RBW_PROFILE=bootstrap` (`rbw unlock`).
+2. Export or inject the initial Bitwarden-held bootstrap secrets via `rbw get`.
+3. Run the Infisical bootstrap wrapper, which re-applies `terraform/infisical-data/`, re-runs Ansible host configuration, recreates the Kubernetes bootstrap Secrets, and then syncs the Infisical application.
 4. Restore PostgreSQL from the latest TrueNAS backup or snapshot.
 5. Verify Infisical server health.
-6. Verify the canary `InfisicalSecret` reconciles successfully.
-7. Confirm Ansible and Terraform workstation lookups can authenticate with their stored machine identities.
+6. If needed, recreate the Ansible and Terraform machine identities in Infisical and store their client credentials back into Bitwarden.
+7. Verify the canary `InfisicalSecret` reconciles successfully.
+8. Confirm Ansible and Terraform workstation lookups can authenticate with their stored machine identities.
 
 This runbook does not need to be fully rehearsal-tested before the migration starts, but it must exist before Phase A is declared complete.
 
@@ -953,24 +1348,22 @@ This runbook does not need to be fully rehearsal-tested before the migration sta
 
 1. **Phase 0.1:** Retire ARC (controller + runners), including GitHub-side ARC cleanup and live finalizer cleanup if the namespaces stick in `Terminating`
 2. **Phase 0.2:** Leave deeptutor in place and explicitly defer its upgrade/evaluation so it does not block the rest of the plan
-3. **A.1:** Define the Layer 0 Bitwarden bootstrap contract (includes Helm chart research for bootstrap Secret schema)
-4. **A.2-A.3:** Provision the dedicated Infisical data host (10.0.10.85) and build the one-command Ansible bootstrap flow with Bitwarden wrapper script
+3. **A.1:** Define the Bitwarden-held initial bootstrap contract (includes Helm chart research for bootstrap Secret schema)
+4. **A.2-A.3:** Refactor the service-host Terraform layer to use a shared rendered module with thin roots, migrate existing `glitchtip-data` / `honcho` state into that structure with `moved` blocks, provision the dedicated Infisical data host (10.0.10.85), and wrap the bootstrap flow in one Bitwarden-driven operator command
 5. **A.4:** Deploy Infisical server on K8s
 6. **A.5:** Populate secrets in Infisical UI/API using the secret inventory checklist
-7. **A.6-A.8:** Deploy Infisical Operator with label-based ArgoCD exclusion, create all three machine identities (K8s Auth + 2x Universal Auth), store workstation credentials in Bitwarden, and validate the permanent canary
-8. **A.9:** Migrate K8s secrets via InfisicalSecret CRDs: cert-manager → glitchtip (ArgoCD secrets handled separately in A.10)
+7. **A.6-A.8:** Deploy Infisical Operator with label-based ArgoCD exclusion, create all three machine identities (K8s Auth + 2x Universal Auth), add required `InfisicalSecret` AppProject allowlists, store workstation credentials in Bitwarden, and validate the permanent canary
+8. **A.9:** Migrate K8s secrets via in-app `InfisicalSecret` CRDs using the standard secret-readiness gate (`PreSync` wait Job): cert-manager → glitchtip → deeptutor (ArgoCD secrets handled separately in A.10)
 9. **A.10:** Migrate Ansible secrets (includes ArgoCD bootstrap-path secret migration via Infisical lookups)
-10. **A.11:** Migrate Terraform secrets (ephemeral resources, Terraform 1.10+)
-11. **A.12.1:** ArgoCD helm-secrets teardown (env vars, init container, Age key volume, wrapper script)
-12. **A.12.2:** Sealed Secrets removal (controller, CRD whitelist, sourceRepos, cert, plugin function)
-13. **A.12.3:** SOPS/Age removal (root .sops.yaml, SecretTasks, encrypt task, Age variables)
+10. **A.11:** Migrate Terraform secrets across all known repo-managed secret-bearing inputs (ephemeral resources where possible; explicitly defer any exceptions)
+11. **A.12.1:** ArgoCD helm-secrets teardown (env vars, init container, Age key volume, wrapper script, and k3s Helm Secrets plugin install)
+12. **A.12.2:** Sealed Secrets removal (controller, CRD whitelist, ApplicationSet ignore rule, sourceRepos, cert, plugin function)
+13. **A.12.3:** SOPS/Age removal and `task configure` rewrite for non-secret-only Phase A behavior
 14. **A.12.4:** Final cleanup sweep
 15. **DR runbook:** Write the documented recovery checklist before calling Phase A complete
-16. **Deferred follow-up:** Revisit deeptutor with the new secret-management patterns in hand; upgrade/evaluate it and migrate its secrets only when it is worth the effort
-17. **B.1-B.3:** Convert all remaining templates to static files
-18. **B.4-B.5:** Remove makejinja, config.yaml, and template infrastructure (includes deleting templates/.sops.yaml and tmpl/.sops.yaml)
-
-Each phase is independently valuable, but Phase A is not complete until SOPS and Age are gone from this repo.
+16. **A.13:** Deploy the trust chain heartbeat script and schedule (daily CronJob or workstation timer), verify all 6 legs pass green, configure GlitchTip alerting on failure
+17. **Deferred follow-up:** Revisit deeptutor with the new secret-management patterns in hand and decide whether to redesign/upgrade it after the current secret migration has already removed its dependence on Sealed Secrets
+Each phase is independently valuable, but Phase A is not complete until SOPS and Age are gone from this repo and the trust chain heartbeat is running green.
 
 ---
 
@@ -985,13 +1378,13 @@ Each phase is independently valuable, but Phase A is not complete until SOPS and
 - repo searches show no live ARC manifest, workflow, config, or tracked-doc references outside intended historical documentation, and deeptutor references match the retained deployment
 - no GitHub-side ARC registrations or scale sets remain
 - no ARC custom resources, ARC finalizers, or orphaned ArgoCD repository registrations remain
-- deeptutor is explicitly deferred and does not block the rest of the plan
+- deeptutor redesign/upgrade is explicitly deferred and does not block the rest of the plan
 
 **After bootstrap implementation:**
 
 - a clean workstation can unlock Bitwarden CLI and run the bootstrap Ansible command
 - the command is idempotent
-- the `infisical` namespace and `infisical-bootstrap` Secret exist before the Infisical server pods start
+- the `infisical` namespace, `infisical-secrets` Secret, and `infisical-postgres-connection` Secret exist before the Infisical server pods start
 
 **After operator deployment:**
 
@@ -1002,34 +1395,43 @@ Each phase is independently valuable, but Phase A is not complete until SOPS and
 **After each K8s app migration:**
 
 - `kubectl get secret <name> -n <namespace>` confirms operator synced the secret
+- the secret-readiness gate succeeds before dependent workloads or hook jobs run
 - Pod logs show successful startup with correct config
 - ArgoCD sync succeeds, app is healthy, ingress responds
+- for deeptutor specifically, the existing deployment remains healthy after `deeptutor-secrets` is replaced by the operator-managed Secret without requiring a broader app redesign
 
 **After Ansible migration:**
 
 - current playbooks that used `community.sops.load_vars` succeed in check mode
 - at least one real execution path succeeds with the new lookup model
+- the ArgoCD bootstrap path reads `admin_password_hash` from Infisical and passes it through without generating a fresh bcrypt hash during rendering or apply
 
 **After Terraform migration:**
 
 - `terraform plan` resolves secrets from Infisical provider
-- old repo-managed Terraform secret artifacts are removed
+- old repo-managed Terraform secret artifacts are removed, including committed `tfvars` / `auto.tfvars` inputs that previously held secrets
+- rerunning `task configure` without config changes does not dirty the worktree
+
+**After trust chain heartbeat deployment:**
+
+- All 6 heartbeat legs pass on first manual run
+- The scheduled job (CronJob or systemd timer) fires on the expected daily cadence
+- A simulated failure (e.g., temporarily invalid Bitwarden item name) triggers a GlitchTip alert within one cycle
+- The heartbeat script is committed to the repo and does not contain hardcoded secrets
 
 **Phase A complete:**
 
 - All `*.secret.yaml` (SealedSecrets) removed from repo
-- `seal_secret()` function removed from makejinja plugin
+- `seal_secret()` function removed from `makejinja/plugin.py`
+- `bcrypt_password()` removed from `makejinja/plugin.py`
+- `encrypt-secrets` removed from `Taskfile.yml`
+- ArgoCD reads a precomputed bcrypt hash from Infisical (`admin_password_hash`) instead of generating one during rendering
 - No secrets remain in `config.yaml`
 - No SOPS or Age configuration remains in the repo
-- No `helm-secrets` integration remains in ArgoCD
+- No `helm-secrets` integration remains in ArgoCD or cluster bootstrap roles
 - No encrypted secret artifacts remain in the repo
 - Bootstrap depends on Bitwarden cloud plus the repo, not on Git-stored encrypted files
+- `task configure` still exists during Phase A but performs non-secret work only
+- `task configure` can be rerun without creating Git noise when inputs are unchanged
 - A DR runbook exists for recovery from a clean workstation using Bitwarden and TrueNAS backups
-
-**Phase B complete:**
-
-- `templates/` directory deleted
-- `makejinja/` directory deleted
-- `config.yaml` deleted
-- `task configure` removed or reduced to non-secret residual work only
-- All manifests are static files edited directly
+- The trust chain heartbeat runs daily, all 6 legs pass green, and GlitchTip alerting is configured for failures

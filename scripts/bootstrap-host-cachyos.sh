@@ -14,6 +14,7 @@ PACKAGES=(
   fluxcd
   git
   go-task
+  go-yq
   helm
   jq
   kubectl
@@ -29,7 +30,6 @@ PACKAGES=(
   tflint
   uv
   yamllint
-  yq
 )
 
 require_cachyos_or_arch() {
@@ -118,12 +118,15 @@ Next steps:
   3. Unlock Bitwarden before bootstrap workflows:
        RBW_PROFILE=bootstrap rbw unlock
   4. Verify the toolchain:
+       which yq
+       yq --version
        which makejinja
        which ansible
        ansible --version
        helm plugin list
 
 Expected:
+  - yq --version reports Mike Farah yq v4
   - ansible resolves to ${ANSIBLE_VENV}/bin/ansible
   - makejinja resolves from uv's tool directory
 EOF

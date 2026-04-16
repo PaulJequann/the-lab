@@ -1,0 +1,12 @@
+# Local terraform state and providers
+.terraform/
+.terraform.lock.hcl
+
+# Local plans and state
+*.tfstate
+*.tfstate.*
+plan
+
+# Generated local variable overrides
+*.tfvars
+*.tfvars.json

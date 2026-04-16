@@ -54,9 +54,9 @@ Install the host packages:
 
 ```bash
 sudo pacman -S --needed \
-  age argocd cloudflared fluxcd git go-task helm jq kubectl \
+  age argocd cloudflared fluxcd git go-task go-yq helm jq kubectl \
   kubeseal kustomize openssh pre-commit prettier rbw sops stern \
-  terraform tflint yamllint yq uv
+  terraform tflint yamllint uv
 ```
 
 Install `makejinja` with `uv`:
@@ -111,6 +111,8 @@ Run these checks after setup:
 
 ```bash
 which task
+which yq
+yq --version
 which makejinja
 which ansible
 ansible --version
@@ -123,6 +125,7 @@ RBW_PROFILE=bootstrap rbw unlocked && echo unlocked || echo locked
 Expected results:
 
 - `task` resolves to the Go Task runner
+- `yq --version` reports Mike Farah `yq` v4
 - `makejinja` resolves from `uv`'s tool bin directory
 - `ansible` resolves to `~/.venvs/the-lab/bin/ansible`
 - Helm lists the `diff` plugin

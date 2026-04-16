@@ -1,7 +1,7 @@
 output "honcho_mac_address" {
-  value = proxmox_lxc.honcho.network[0].hwaddr
+  value = module.service_host.mac_address
 }
 
 output "honcho_ip" {
-  value = "{{ honcho_ip }}"
+  value = module.service_host.ip_address
 }

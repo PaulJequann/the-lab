@@ -1,0 +1,10 @@
+---
+infisical_backup_mount_point: /mnt/infisical-postgres-backups
+infisical_backup_schedule: '*-*-* 03:45:00'
+infisical_postgres_listen_addresses: 'localhost,10.0.10.85'
+infisical_postgres_db_encoding: UTF8
+infisical_postgres_db_template: template0
+infisical_postgres_db_lc_collate: C.UTF-8
+infisical_postgres_db_lc_ctype: C.UTF-8
+infisical_redis_bind: '127.0.0.1 10.0.10.85'
+infisical_redis_appendonly: 'yes'

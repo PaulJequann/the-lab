@@ -17,6 +17,9 @@ all:
         {{ honcho_hostname }}:
           ansible_host: {{ honcho_ip }}
           device_model: lxc
+        {{ terraform_service_lxcs['infisical-data'].hostname }}:
+          ansible_host: {{ terraform_service_lxcs['infisical-data'].ip }}
+          device_model: lxc
     {{ agent_group }}:
       hosts:
         {% for node in node_inventory if not node.controller %}

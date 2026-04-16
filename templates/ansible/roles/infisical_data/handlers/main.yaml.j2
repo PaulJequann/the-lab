@@ -1,0 +1,17 @@
+{% raw %}
+---
+
+- name: Restart postgresql
+  ansible.builtin.systemd:
+    name: "postgresql@{{ infisical_postgres_version }}-main"
+    state: restarted
+
+- name: Restart redis
+  ansible.builtin.systemd:
+    name: redis-server
+    state: restarted
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+{% endraw %}
