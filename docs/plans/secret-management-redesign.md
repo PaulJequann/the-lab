@@ -584,7 +584,7 @@ Template sources live under `templates/ansible/roles/infisical_data/` and are re
 
 ### A.3 Build a One-Command Bootstrap Flow ✅
 
-**Status:** A.3 is complete. The bootstrap flow is split into two single-responsibility pieces: a secret loader script and Taskfile orchestration. The `rbw` bootstrap profile is configured and verified — all 9 Bitwarden items are readable. Dry runs pass for both the K8s secrets task (with and without env vars) and the Ansible playbook.
+**Status:** A.3 is complete and A.4 is unblocked. The bootstrap flow is split into two single-responsibility pieces: a secret loader script and Taskfile orchestration. The `rbw` bootstrap profile is configured and verified, `task deploy-infisical-data` now completes successfully end to end, and the Infisical data host at `10.0.10.85` is up with PostgreSQL and Redis configured and reachable. Backups are intentionally deferred for now, so the host bootstrap is considered complete with backup wiring disabled until the later storage pass.
 
 **Design: SRP split instead of monolithic wrapper script**
 
@@ -667,6 +667,20 @@ The deploy task chains all steps in order:
 6. `task create-infisical-k8s-secrets` — create/reconcile namespace and bootstrap Secrets
 
 The loader defaults to `all` when called with no arguments and now fails immediately if any `rbw get` call returns an error or an empty secret. The `deploy-infisical-data` task also performs workstation and cluster preflight checks before provisioning begins.
+
+**Completion evidence:**
+
+- [x] Bitwarden bootstrap items are readable through the `bootstrap` `rbw` profile
+- [x] `task deploy-infisical-data` completes successfully after the Proxmox API token pair was corrected
+- [x] Terraform reconciles the `infisical-data` LXC successfully
+- [x] Ansible bootstrap and configuration complete successfully for the data host
+- [x] PostgreSQL is running on `10.0.10.85:5432`
+- [x] Redis is running on `10.0.10.85:6379`
+- [x] The `infisical` PostgreSQL role and database exist and accept authenticated connections
+- [x] Bootstrap K8s Secrets are created in the `infisical` namespace
+- [x] Backup setup is explicitly deferred and disabled for now so it does not block bootstrap
+
+This closes Phase A.3. The remaining backup/NFS design work is not a prerequisite for bringing up the Infisical server and should be handled later as follow-up infrastructure work, not as a blocker for A.4.
 
 **K8s bootstrap Secrets created by `create-infisical-k8s-secrets`:**
 
