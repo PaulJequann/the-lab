@@ -155,7 +155,13 @@ tasks:
     desc: Bootstrap the Infisical data host with the ansible user and base settings
     dir: "{{.ANSIBLE_DIR}}"
     cmds:
-      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml --limit infisical-data -u root -e "ansible_user=root" {{.CLI_ARGS}}
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml --limit infisical-data -u root -e "ansible_user=root" -e "run_system_updates=false" {{.CLI_ARGS}}
+
+  update-infisical-data:
+    desc: Update the Infisical data host packages and base settings
+    dir: "{{.ANSIBLE_DIR}}"
+    cmds:
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml --limit infisical-data -u pj -e "ansible_user=pj" -e "run_system_updates=true" {{.CLI_ARGS}}
 
   configure-infisical-data:
     desc: Configure PostgreSQL and Redis on the Infisical data host

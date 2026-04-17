@@ -578,13 +578,15 @@ Template sources live under `templates/ansible/roles/infisical_data/` and are re
 **Taskfile entries (implemented):**
 
 - `terraform:init-infisical-data`, `terraform:plan-infisical-data`, `terraform:apply-infisical-data`
-- `ansible:bootstrap-infisical-data`, `ansible:configure-infisical-data`
-- `create-infisical-k8s-secrets` — creates/reconciles the K8s namespace and bootstrap Secrets
-- `deploy-infisical-data` — top-level task chaining all of the above
+- `ansible:bootstrap-infisical-data`, `ansible:update-infisical-data`, `ansible:configure-infisical-data`
+- `apply-infisical-bootstrap-secrets` — private helper that creates/reconciles the K8s namespace and bootstrap Secrets
+- `deploy-infisical-data` — first-time provisioning path
+- `update-infisical-data` — package updates and host/app reconfiguration for an already-running server
+- `redeploy-infisical-secrets` — secrets-only reconciliation path
 
 ### A.3 Build a One-Command Bootstrap Flow ✅
 
-**Status:** A.3 is complete and A.4 is unblocked. The bootstrap flow is split into two single-responsibility pieces: a secret loader script and Taskfile orchestration. The `rbw` bootstrap profile is configured and verified, `task deploy-infisical-data` now completes successfully end to end, and the Infisical data host at `10.0.10.85` is up with PostgreSQL and Redis configured and reachable. Backups are intentionally deferred for now, so the host bootstrap is considered complete with backup wiring disabled until the later storage pass.
+**Status:** A.3 is complete and A.4 is unblocked. The bootstrap flow is split into three task paths plus a secret loader script: first-time deploy, update-existing-host, and secrets-only reconciliation. The `rbw` bootstrap profile is configured and verified, `task deploy-infisical-data` now completes successfully end to end, and the Infisical data host at `10.0.10.85` is up with PostgreSQL and Redis configured and reachable. Backups are intentionally deferred for now, so the host bootstrap is considered complete with backup wiring disabled until the later storage pass.
 
 **Design: SRP split instead of monolithic wrapper script**
 
@@ -592,13 +594,17 @@ The original plan proposed a single wrapper script that both loaded secrets and 
 
 1. **`scripts/load-bootstrap-secrets.sh`** — Single responsibility: load Bitwarden secrets into the current shell. Sourceable script that sets `RBW_PROFILE=bootstrap`, ensures the agent is unlocked, and exports all 9 secrets as env vars. Does not orchestrate, does not call tasks.
 
-2. **`task deploy-infisical-data`** — Single responsibility: orchestrate the deploy. Chains configure → terraform → ansible → K8s secrets. Each sub-task also has a single responsibility and can be run independently.
+2. **`task deploy-infisical-data`** — Single responsibility: orchestrate the first-time deploy. Chains configure → terraform → ansible bootstrap → ansible configure → secrets reconciliation.
+3. **`task update-infisical-data`** — Single responsibility: update an already-running host and reapply the Infisical service config.
+4. **`task redeploy-infisical-secrets`** — Single responsibility: reconcile the bootstrap Kubernetes Secrets after a secret rotation or leak.
 
 **Usage:**
 
 ```bash
 source scripts/load-bootstrap-secrets.sh    # defaults to all bootstrap secret groups
 task deploy-infisical-data                   # deploy data host + bootstrap Secrets
+task update-infisical-data                   # update running host + reapply service config
+task redeploy-infisical-secrets              # reconcile bootstrap Secrets only
 ```
 
 Or run individual steps:
@@ -606,7 +612,8 @@ Or run individual steps:
 ```bash
 source scripts/load-bootstrap-secrets.sh
 task ansible:configure-infisical-data        # just reconfigure PostgreSQL/Redis
-task create-infisical-k8s-secrets            # just reconcile K8s bootstrap Secrets
+task apply-infisical-bootstrap-secrets       # internal helper used by redeploy-infisical-secrets
+task ansible:update-infisical-data           # update base host packages/config on an existing server
 ```
 
 **Bitwarden CLI tooling (`rbw`):**
@@ -657,14 +664,19 @@ Later, after A.7 creates the Ansible and Terraform machine identities inside Inf
 
 **Orchestration via Taskfile (`task deploy-infisical-data`):**
 
-The deploy task chains all steps in order:
+The deploy and maintenance tasks split the host lifecycle into separate paths:
 
 1. `task configure` — render templates
 2. `task terraform:init-infisical-data` — init Terraform
 3. `task terraform:apply-infisical-data` — provision/reconcile LXC
 4. `task ansible:bootstrap-infisical-data` — create ansible user, deploy SSH key
 5. `task ansible:configure-infisical-data` — configure PostgreSQL, Redis, backups
-6. `task create-infisical-k8s-secrets` — create/reconcile namespace and bootstrap Secrets
+6. `task redeploy-infisical-secrets` — create/reconcile namespace and bootstrap Secrets
+
+For repeat operations:
+
+- `task update-infisical-data` — run the package update and host/app reconfiguration path
+- `task redeploy-infisical-secrets` — reconcile only the Kubernetes bootstrap Secrets after a leak or rotation
 
 The loader defaults to `all` when called with no arguments and now fails immediately if any `rbw get` call returns an error or an empty secret. The `deploy-infisical-data` task also performs workstation and cluster preflight checks before provisioning begins.
 
@@ -682,7 +694,7 @@ The loader defaults to `all` when called with no arguments and now fails immedia
 
 This closes Phase A.3. The remaining backup/NFS design work is not a prerequisite for bringing up the Infisical server and should be handled later as follow-up infrastructure work, not as a blocker for A.4.
 
-**K8s bootstrap Secrets created by `create-infisical-k8s-secrets`:**
+**K8s bootstrap Secrets created by `apply-infisical-bootstrap-secrets`:**
 
 | K8s Secret | Key | Source |
 |---|---|---|

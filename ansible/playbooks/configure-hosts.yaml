@@ -183,7 +183,9 @@
         upgrade: yes
         lock_timeout: 600
       become: true
-      when: ansible_facts['os_family'] == "Debian"
+      when:
+        - ansible_facts['os_family'] == "Debian"
+        - run_system_updates | default(true) | bool
 
     - name: Update system packages (dnf-based)
       dnf:
@@ -191,7 +193,9 @@
         name: '*'
         state: latest
       become: true
-      when: ansible_facts['os_family'] == "RedHat"
+      when:
+        - ansible_facts['os_family'] == "RedHat"
+        - run_system_updates | default(true) | bool
 
     # Surface-specific configuration tasks
     - name: Configure Surface device settings

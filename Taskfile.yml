@@ -302,7 +302,7 @@ tasks:
         task terraform:apply-infisical-data && \
         task ansible:bootstrap-infisical-data && \
         task ansible:configure-infisical-data && \
-        task create-infisical-k8s-secrets
+        task redeploy-infisical-secrets
     preconditions:
       - sh: command -v rbw >/dev/null 2>&1
         msg: "rbw must be installed on the host workstation."
@@ -335,20 +335,51 @@ tasks:
       - sh: test "$(yq eval '.unifi_password' config.yaml)" != "REPLACE_ME"
         msg: "Set unifi_password in config.yaml"
 
-  create-infisical-k8s-secrets:
+  update-infisical-data:
+    desc: Update the Infisical data host without reprovisioning it
+    cmds:
+      - |
+        source scripts/load-bootstrap-secrets.sh infisical
+        task ansible:update-infisical-data && \
+        task ansible:configure-infisical-data
+    preconditions:
+      - sh: command -v rbw >/dev/null 2>&1
+        msg: "rbw must be installed on the host workstation."
+      - sh: RBW_PROFILE=bootstrap rbw config show >/dev/null 2>&1
+        msg: "rbw bootstrap profile is not configured. Configure RBW_PROFILE=bootstrap first."
+
+  redeploy-infisical-secrets:
+    desc: Reconcile the Kubernetes namespace and bootstrap secrets for Infisical
+    deps:
+      - apply-infisical-bootstrap-secrets
+    preconditions:
+      - sh: command -v rbw >/dev/null 2>&1
+        msg: "rbw must be installed on the host workstation."
+      - sh: RBW_PROFILE=bootstrap rbw config show >/dev/null 2>&1
+        msg: "rbw bootstrap profile is not configured. Configure RBW_PROFILE=bootstrap first."
+      - sh: command -v kubectl >/dev/null 2>&1
+        msg: "kubectl must be installed."
+      - sh: kubectl cluster-info >/dev/null 2>&1
+        msg: "kubectl cannot reach the current cluster. Fix kubeconfig or cluster access before running redeploy-infisical-secrets."
+      - sh: yq --version 2>/dev/null | grep -q '^yq (https://github.com/mikefarah/yq/) version v4\.'
+        msg: "redeploy-infisical-secrets requires Mike Farah yq v4. Install the system package: go-yq."
+
+  apply-infisical-bootstrap-secrets:
+    internal: true
     desc: Create or reconcile the Kubernetes namespace and bootstrap secrets for Infisical
     vars:
       INFISICAL_NS: infisical
       INFISICAL_DATA_IP: 10.0.10.85
+    env:
+      INFISICAL_DB_PASSWORD:
+        sh: RBW_PROFILE=bootstrap rbw get homelab/bootstrap/infisical-db-password
+      INFISICAL_REDIS_PASSWORD:
+        sh: RBW_PROFILE=bootstrap rbw get homelab/bootstrap/infisical-redis-password
+      INFISICAL_ENCRYPTION_KEY:
+        sh: RBW_PROFILE=bootstrap rbw get homelab/bootstrap/infisical-encryption-key
+      INFISICAL_AUTH_SECRET:
+        sh: RBW_PROFILE=bootstrap rbw get homelab/bootstrap/infisical-auth-secret
     preconditions:
-      - sh: '[ -n "$INFISICAL_DB_PASSWORD" ]'
-        msg: "INFISICAL_DB_PASSWORD not set. Run: source scripts/load-bootstrap-secrets.sh"
-      - sh: '[ -n "$INFISICAL_REDIS_PASSWORD" ]'
-        msg: "INFISICAL_REDIS_PASSWORD not set. Run: source scripts/load-bootstrap-secrets.sh"
-      - sh: '[ -n "$INFISICAL_ENCRYPTION_KEY" ]'
-        msg: "INFISICAL_ENCRYPTION_KEY not set. Run: source scripts/load-bootstrap-secrets.sh"
-      - sh: '[ -n "$INFISICAL_AUTH_SECRET" ]'
-        msg: "INFISICAL_AUTH_SECRET not set. Run: source scripts/load-bootstrap-secrets.sh"
       - sh: command -v python3 >/dev/null 2>&1
         msg: "python3 required for URL-encoding secret passwords."
     cmds:
@@ -383,9 +414,9 @@ tasks:
       - sh: command -v helm >/dev/null 2>&1
         msg: "helm must be installed for dry-render verification."
       - sh: kubectl -n {{.INFISICAL_NS}} get secret infisical-secrets >/dev/null 2>&1
-        msg: "infisical-secrets bootstrap Secret not found in {{.INFISICAL_NS}} namespace. Run: task deploy-infisical-data"
+        msg: "infisical-secrets bootstrap Secret not found in {{.INFISICAL_NS}} namespace. Run: task redeploy-infisical-secrets"
       - sh: kubectl -n {{.INFISICAL_NS}} get secret infisical-postgres-connection >/dev/null 2>&1
-        msg: "infisical-postgres-connection bootstrap Secret not found in {{.INFISICAL_NS}} namespace. Run: task deploy-infisical-data"
+        msg: "infisical-postgres-connection bootstrap Secret not found in {{.INFISICAL_NS}} namespace. Run: task redeploy-infisical-secrets"
       - sh: test -f {{.INFISICAL_CHART_DIR}}/Chart.yaml
         msg: "{{.INFISICAL_CHART_DIR}}/Chart.yaml missing. Run: task configure"
       - sh: test -f {{.INFISICAL_CHART_DIR}}/values.yaml
