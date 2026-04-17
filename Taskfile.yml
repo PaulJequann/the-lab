@@ -349,9 +349,13 @@ tasks:
         msg: "rbw bootstrap profile is not configured. Configure RBW_PROFILE=bootstrap first."
 
   redeploy-infisical-secrets:
-    desc: Reconcile the Kubernetes namespace and bootstrap secrets for Infisical
-    deps:
-      - apply-infisical-bootstrap-secrets
+    desc: Rotate Infisical credentials on the data host and in the Kubernetes bootstrap Secret
+    cmds:
+      - |
+        source scripts/load-bootstrap-secrets.sh infisical
+        task ansible:configure-infisical-data
+      - task: apply-infisical-bootstrap-secrets
+      - kubectl -n infisical rollout restart deployment/infisical 2>/dev/null || true
     preconditions:
       - sh: command -v rbw >/dev/null 2>&1
         msg: "rbw must be installed on the host workstation."
