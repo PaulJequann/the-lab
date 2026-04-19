@@ -35,8 +35,8 @@ set -uo pipefail
 ROTATE=false
 ENV_SLUG="${INFISICAL_ENV_SLUG:-prod}"
 OPERATOR_SA_NAMESPACE="${OPERATOR_SA_NAMESPACE:-infisical-operator}"
-OPERATOR_SA_NAME="${OPERATOR_SA_NAME:-infisical-operator-se-controller-manager}"
-KUBERNETES_HOST="${KUBERNETES_HOST:-https://kubernetes.default.svc}"
+OPERATOR_SA_NAME="${OPERATOR_SA_NAME:-infisical-opera-controller-manager}"
+KUBERNETES_HOST="${KUBERNETES_HOST:-https://kubernetes.default.svc.cluster.local}"
 TOKEN_REVIEWER_NS="${TOKEN_REVIEWER_NS:-infisical}"
 TOKEN_REVIEWER_SECRET="${TOKEN_REVIEWER_SECRET:-infisical-token-reviewer-token}"
 
@@ -55,7 +55,7 @@ done
 # ----------------------------------------------------------------------------
 
 _fail() { echo "ERROR: $*" >&2; exit 1; }
-_log()  { echo "[$(date +%H:%M:%S)] $*"; }
+_log()  { echo "[$(date +%H:%M:%S)] $*" >&2; }
 
 for cmd in kubectl jq curl rbw; do
   command -v "$cmd" >/dev/null 2>&1 || _fail "$cmd not in PATH"
@@ -166,7 +166,7 @@ _add_privilege() {
   local id="$1" slug="$2" perms="$3"
   local body resp
   body="$(jq -c -n --arg id "$id" --arg p "$INFISICAL_PROJECT_ID" --arg s "$slug" --argjson perms "$perms" \
-    '{identityId:$id, projectId:$p, slug:$s, permissions:$perms}')"
+    '{identityId:$id, projectId:$p, slug:$s, type:{isTemporary:false}, permissions:$perms}')"
   resp="$(_api POST "/v2/identity-project-additional-privilege" "$body")"
   if jq -e '.statusCode == 400 and (.message // "" | tostring | test("exists|duplicate"; "i"))' >/dev/null 2>&1 <<<"$resp"; then
     _log "    [privilege] '${slug}' already exists"
@@ -187,9 +187,9 @@ _grant_read_paths() {
     local perms
     perms="$(jq -c -n --arg env "$ENV_SLUG" --arg path "$path_glob" '
       [
-        {subject:"secrets",         action:"read",          conditions:{environment:$env, secretPath:{"$glob":$path}}},
-        {subject:"secrets",         action:"describe-secret", conditions:{environment:$env, secretPath:{"$glob":$path}}},
-        {subject:"secret-folders",  action:"read",          conditions:{environment:$env, secretPath:{"$glob":$path}}}
+        {subject:"secrets",         action:"read",           conditions:{environment:$env, secretPath:{"$glob":$path}}},
+        {subject:"secrets",         action:"describeSecret", conditions:{environment:$env, secretPath:{"$glob":$path}}},
+        {subject:"secret-folders",  action:"read",           conditions:{environment:$env, secretPath:{"$glob":$path}}}
       ]')"
     _add_privilege "$id" "$slug" "$perms"
   done
@@ -283,19 +283,37 @@ _get_or_create_client_secret() {
 }
 
 _rbw_set() {
+  # rbw add/edit only invoke $EDITOR when stdin is a TTY. Two issues:
+  #   1. EDITOR must be an exec'able binary (no shell expansion), so we
+  #      drop a tiny wrapper script that copies our pre-populated value
+  #      file over the temp file rbw passes as $1.
+  #   2. Bash command tooling and CI environments don't have a TTY, so
+  #      we wrap the rbw call in `script(1)` to fake one.
   local entry="$1" value="$2"
   if [ "$value" = "KEEP" ]; then
     _log "  [rbw] ${entry} unchanged (existing secret reused)"
     return 0
   fi
+  local tmp helper subcmd
+  tmp="$(mktemp)"
+  helper="$(mktemp)"
+  printf '%s\n' "$value" > "$tmp"
+  cat > "$helper" <<WRAP
+#!/usr/bin/env sh
+cp "${tmp}" "\$1"
+WRAP
+  chmod +x "$helper"
   if rbw get "$entry" >/dev/null 2>&1; then
     _log "  [rbw] updating ${entry}"
-    printf '%s' "$value" | rbw edit --notes "$entry" >/dev/null 2>&1 || \
-      { rbw remove "$entry" 2>/dev/null; printf '%s' "$value" | rbw add --notes "$entry"; }
+    subcmd="edit"
   else
     _log "  [rbw] creating ${entry}"
-    printf '%s' "$value" | rbw add --notes "$entry"
+    subcmd="add"
   fi
+  # Force a PTY so rbw invokes the editor.
+  EDITOR="$helper" script -q -c "EDITOR='$helper' RBW_PROFILE='${RBW_PROFILE:-default}' rbw $subcmd '$entry'" /dev/null >/dev/null
+  shred -u "$tmp" 2>/dev/null || rm -f "$tmp"
+  rm -f "$helper"
 }
 
 _provision_ua_identity() {
