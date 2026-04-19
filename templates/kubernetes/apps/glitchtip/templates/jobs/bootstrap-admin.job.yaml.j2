@@ -30,6 +30,11 @@ spec:
             - /bin/sh
             - -ec
             - |
+              # Run migrations here because we disabled the chart's migrationJob
+              # hook — it fires in PreSync before InfisicalSecret populates the
+              # DB envvars. This PostSync hook runs after the Deployment (which
+              # means the Secret is guaranteed present) and is safe to re-run.
+              python manage.py migrate --noinput
               python manage.py shell <<'PY'
               import os
 

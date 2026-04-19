@@ -58,11 +58,13 @@ glitchtip:
       existingSecret: glitchtip-secrets
       existingSecretKey: REDIS_URL
 
+  # Chart's migrate Job annotates itself helm.sh/hook: post-install,pre-upgrade
+  # which ArgoCD expands to PreSync+PostSync. The PreSync arm runs before the
+  # InfisicalSecret populates glitchtip-secrets, so bootstrap/DR deadlocks on
+  # CreateContainerConfigError. We run migrations inside the bootstrap-admin
+  # Job (PostSync, after Secret+Deployment are in place) instead.
   migrationJob:
-    enabled: true
-    database:
-      existingSecret: glitchtip-secrets
-      existingSecretKey: MAINTENANCE_DATABASE_URL
+    enabled: false
 
   web:
     replicaCount: 1
