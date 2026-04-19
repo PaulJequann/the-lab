@@ -1170,6 +1170,30 @@ This keeps the current app auto-discovery model intact and avoids introducing a 
 - **Empirical operator read verification:** deployed a throwaway `InfisicalSecret` at `infisical-a9-probe/a9-probe` reading `/kubernetes/cert-manager` → managed Secret populated with `cloudflare_api_token` → cleanup done. Confirmed `/kubernetes/**` grant is live alongside the `/canary/**` grant from A.8.
 - **Operator connectivity glitch:** operator logs showed transient `"dial tcp 10.43.99.62:8080: connect: operation not permitted"` errors (Cilium/netfilter EPERM) that self-healed. Canary Secret stable, probe succeeded after operator restart. Not blocking; monitor.
 
+**Post-ship hardening (2026-04-19, discovered during `kubectl` verification):**
+
+The initial A.9 commits shipped with five bootstrap-path defects. None affected deeptutor (uses `includeAllSecrets: true`, no Go template), but cert-manager and glitchtip — both Helm charts with `template.data` — broke on fresh sync. Each is now fixed in a dedicated follow-up commit.
+
+1. **`bitnami/kubectl:1.30.4` gone from Docker Hub.** Bitnami migrated free images to `bitnamilegacy/*` in Aug 2025; the prior tag now returns NotFound, so every `wait-for-*` Job looped on `ImagePullBackOff` and hit `DeadlineExceeded`. **Fix:** `bitnamilegacy/kubectl:1.30.4` (drop-in; preserves minideb base + `/bin/sh`). `rancher/kubectl:v1.30.4` is the k3s-native option but ships distroless — breaks the shell loop. *Commits `34494b0` + `f39f30c`.*
+
+2. **Helm swallowed the operator's Go template.** The plan example `"{{ .KEY }}"` was rendered by the chart's Helm pass first (not ArgoCD), where `.KEY` is undefined → empty string, then the Infisical operator saw an already-empty `template.data` value and wrote an empty Secret. **Fix:** double-escape via Helm's backtick literal so the template reaches the operator verbatim, and use the operator's `.Value` accessor, which the plan example omitted:
+
+    ```yaml
+    cloudflare-api-token: '{{ `{{ .cloudflare_api_token.Value }}` }}'
+    ```
+
+    Verified empirically: flipping `includeAllSecrets: true` on cert-manager surfaced `cloudflare_api_token` with a 40-byte value while the templated `cloudflare-api-token` was length 0. Patching the CR to use `.Value` populated it. *Commits `1a6b46f` + `51e987f`.*
+
+3. **Comments in Helm templates are also parsed.** Jinja-rendered helper comments containing `{{ .KEY.Value }}` tripped Helm's template engine with `nil pointer evaluating interface {}.Value`. **Fix:** strip `{{ }}` tokens from comments adjacent to templated values. *Commit `51e987f`.*
+
+4. **Jinja `{% endraw %}` at end-of-line eats the trailing newline.** Glitchtip's three URL lines collapsed onto one output line, producing invalid YAML (`did not find expected key`). **Fix:** wrap multi-line template blocks in a single `{% raw %}…{% endraw %}` pair (newlines preserved inside raw); for single-line cases, emit the literal string via `{{ "…" }}` expression instead. *Commit `0fbb88f`.*
+
+5. **Glitchtip chart's `migrationJob` deadlocks bootstrap.** The upstream chart annotates its migrate Job with `helm.sh/hook: post-install,pre-upgrade`. ArgoCD expands `pre-upgrade` to `PreSync`, which runs before the Sync-phase `InfisicalSecret` populates `glitchtip-secrets` — so the migrate pod dies with `CreateContainerConfigError: secret "glitchtip-secrets" not found` and the whole sync deadlocks on the stuck PreSync hook. Left in place the failure takes the namespace with it (orphan `argocd.argoproj.io/hook-finalizer` on the dead Job blocks `kubectl delete ns`). **Fix:** set `glitchtip.migrationJob.enabled: false` and fold `python manage.py migrate --noinput` into the existing `glitchtip-bootstrap-admin` PostSync Job (already runs after Deployments roll, so the managed Secret is guaranteed present; migrate is idempotent). *Commit `250b700`.*
+
+**Operator recovery limitation (Infisical v0.10.32).** If the managed `Secret` is deleted externally while the `InfisicalSecret` CR still exists, the operator does not recreate it — it reconciles every 60s and errors in the auto-redeploy path (`unable to fetch Kubernetes secret to update deployment`) without re-running the create. Workaround observed twice (deeptutor, cert-manager): `kubectl delete infisicalsecret …` then refresh ArgoCD; the next apply creates a fresh CR and the operator writes the Secret. *Not a blocker once A.9 is stable, but document so disaster-recovery runbooks include the delete-CR step rather than assuming the operator self-heals.*
+
+**DR/bootstrap validation (performed 2026-04-19):** The glitchtip namespace was fully wiped (`kubectl delete ns glitchtip`, finalizer strip on the stuck hook Job) and rebuilt from scratch via ArgoCD at revision `250b700`. Sequence: ns recreated → `InfisicalSecret` applied at wave `-10` → operator populated all 15 keys (raw + composed `DATABASE_URL`/`REDIS_URL`) → `wait-for-glitchtip-secrets` Job completed in 3s → Deployments rolled → `glitchtip-bootstrap-admin` PostSync ran migrate + admin upsert. End state: Synced/Healthy. This path is now the canonical DR runbook for any A.9-style app.
+
 DeepTutor is part of the retained app set. Its broader redesign/upgrade remains deferred, but its current three runtime API-key secrets should still migrate during Phase A so the Sealed Secrets controller can be removed globally.
 
 **Migration pattern:**
