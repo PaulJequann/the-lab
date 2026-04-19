@@ -37,6 +37,7 @@ spec:
   managedKubeSecretReferences:
     - secretName: canary-heartbeat
       secretNamespace: infisical-canary
+      secretType: Opaque
       creationPolicy: Owner
       template:
         includeAllSecrets: true

@@ -227,7 +227,7 @@ fi
 _check "$RESP" "attach k8s-auth to operator identity" >/dev/null
 _log "  [k8s-auth] configured (allowedNamespaces=${OPERATOR_SA_NAMESPACE}, allowedNames=${OPERATOR_SA_NAME})"
 
-_grant_read_paths "$OP_ID" "/kubernetes/**"
+_grant_read_paths "$OP_ID" "/kubernetes/**" "/canary/**"
 
 echo ""
 echo "==> K8s Operator identity ID: ${OP_ID}"
