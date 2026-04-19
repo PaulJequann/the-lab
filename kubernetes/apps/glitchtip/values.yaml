@@ -11,10 +11,7 @@ glitchtip:
           name: glitchtip-secrets
           key: EMAIL_URL
     - name: DEFAULT_FROM_EMAIL
-      valueFrom:
-        secretKeyRef:
-          name: glitchtip-secrets
-          key: DEFAULT_FROM_EMAIL
+      value: "glitchtip@bysliek.com"
     - name: GLITCHTIP_ENABLE_MCP
       value: "true"
     - name: GLITCHTIP_ENABLE_LOGS
