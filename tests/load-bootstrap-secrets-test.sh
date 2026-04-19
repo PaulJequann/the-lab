@@ -73,6 +73,7 @@ run_loader() {
     printf 'INFISICAL_ENCRYPTION_KEY=%s\n' \"\${INFISICAL_ENCRYPTION_KEY-}\"
     printf 'INFISICAL_AUTH_SECRET=%s\n' \"\${INFISICAL_AUTH_SECRET-}\"
     printf 'INFISICAL_REDIS_PASSWORD=%s\n' \"\${INFISICAL_REDIS_PASSWORD-}\"
+    printf 'INFISICAL_API_URL=%s\n' \"\${INFISICAL_API_URL-}\"
   "
 }
 
@@ -89,6 +90,8 @@ test_defaults_to_all_when_no_groups_are_given() {
     || fail "loader should populate terraform secrets by default"
   grep -q '^INFISICAL_DB_PASSWORD=value-for-homelab/bootstrap/infisical-db-password$' <<<"${output}" \
     || fail "loader should populate infisical secrets by default"
+  grep -q '^INFISICAL_API_URL=https://infisical.local.bysliek.com$' <<<"${output}" \
+    || fail "loader should export the self-hosted Infisical API URL"
 }
 
 test_fails_fast_when_rbw_lookup_errors() {

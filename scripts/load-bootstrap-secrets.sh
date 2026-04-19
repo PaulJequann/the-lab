@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Load bootstrap secrets from Bitwarden cloud into the current shell.
-set -uo pipefail
+# NOTE: this script is sourced, so it intentionally does NOT `set -u`/`set -e`
+# — those options would leak into the caller's interactive shell and cause
+# unrelated breakage (e.g. prompt plugins that reference optional vars).
+# Error handling is done explicitly below with `|| return 1`.
 #
 # Usage:
 #   source scripts/load-bootstrap-secrets.sh [group...]
@@ -75,6 +78,7 @@ if ! command -v rbw &>/dev/null; then
 fi
 
 export RBW_PROFILE=bootstrap
+export INFISICAL_API_URL="${INFISICAL_API_URL:-https://infisical.local.bysliek.com}"
 
 # Ensure the agent is unlocked
 if ! rbw unlocked 2>/dev/null; then
