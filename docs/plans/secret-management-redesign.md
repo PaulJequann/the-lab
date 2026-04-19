@@ -975,7 +975,9 @@ Rotating `POSTGRES_PASSWORD` in Infisical → operator re-renders the managed Se
 - 7 glitchtip BOOTSTRAP variables (`BOOTSTRAP_ORGANIZATION_NAME`, `_ORGANIZATION_SLUG`, `_PROJECT_NAME`, `_PROJECT_SLUG`, `_PROJECT_PLATFORM`, `_PROJECT_KEY_NAME`, `_PROJECT_KEY_PUBLIC_KEY`) + the `glitchtip-bootstrap-artifacts` Secret write — glitchtip-bootstrap-admin Job is trimmed in A.9 to admin + MCP token creation only; org/project/DSN setup moves to manual UI configuration (no other app in this repo consumes the bootstrap artifacts).
 - `terraform/kubernetes-nodes/terraform.tfvars` — byte-identical duplicate of `terraform/unifi/terraform.tfvars`; the dir has an empty `main.tf` and only runs `unifi_users.tf`. Delete the duplicate file (keep `unifi/terraform.tfvars` as the canonical source) during A.11 cleanup.
 
-### A.6 Deploy Infisical Operator
+### A.6 Deploy Infisical Operator ✅
+
+**Status:** ✅ Manifests authored 2026-04-18; pending operator commit + ArgoCD sync to verify reconciliation.
 
 Create `kubernetes/infrastructure/infisical-operator/` with Helm-based deployment.
 
@@ -1029,7 +1031,20 @@ spec:
   # ...
 ```
 
-### A.7 Create Machine Identities
+**Concrete deliverables (2026-04-18):**
+
+- `templates/kubernetes/infrastructure/infisical-operator/{Chart.yaml.j2,values.yaml.j2}` — umbrella chart wrapping `secrets-operator` v0.10.32, pointing `hostAPI` at the in-cluster service `http://infisical.infisical.svc.cluster.local:8080/api`.
+- `templates/kubernetes/infrastructure/infisical/templates/token-reviewer.yaml.j2` — `infisical-token-reviewer` SA + long-lived token Secret + `system:auth-delegator` ClusterRoleBinding (lives in the `infisical` namespace because Infisical itself calls TokenReview; A.7 reads this JWT when configuring K8s Auth on the operator identity).
+- `templates/kubernetes/bootstrap/projects/infrastructure.yaml.j2` — added `infisical_operator_chart_repo` to `sourceRepos`.
+- `templates/kubernetes/bootstrap/projects/apps.yaml.j2` — added `secrets.infisical.com/InfisicalSecret` to `namespaceResourceWhitelist` ahead of A.9.
+- `templates/kubernetes/core/argo-cd/secrets.sops.yaml.j2` — added `configs.cm["resource.exclusions"]` block excluding `Secret` resources labeled `app.kubernetes.io/managed-by: infisical-operator`.
+- `config.yaml` additions: `infisical_operator_chart_{repo,version}`, `infisical_operator_namespace`, `infisical_operator_service_account`, `infisical_internal_url`.
+
+**Architectural note — namespace placement:** The cluster-apps ApplicationSet hardcodes `namespace = directory basename`, so the operator gets its own `infisical-operator` namespace rather than co-locating with the Infisical server. Same pattern as every other app in this repo.
+
+### A.7 Create Machine Identities ⏳
+
+**Status:** Script + supporting RBAC authored 2026-04-18 (`scripts/create-machine-identities.sh`); pending operator deploy + workstation invocation to populate Bitwarden and emit identity IDs.
 
 Create three separate machine identities in Infisical, each scoped to the minimum paths it needs.
 
@@ -1060,7 +1075,29 @@ This step is where the workstation credentials that were intentionally omitted f
 
 Ansible and Terraform credentials cannot live in Infisical without creating a circular dependency — they must be in Bitwarden.
 
-### A.8 Canary Health Check
+**Implementation: `scripts/create-machine-identities.sh`**
+
+Idempotent helper that drives identity provisioning end-to-end via the Infisical REST API (`infisical` CLI does not expose identity admin operations). Design constraints mirror `populate-infisical.sh`:
+
+- **Authentication.** Reads admin token from `infisical/infisical-admin-identity` Secret. Requires `INFISICAL_API_URL` + `INFISICAL_PROJECT_ID` env (sourced via `load-bootstrap-secrets.sh` + manual export).
+- **Idempotency.** Reuses existing identities by name; skips already-attached project memberships and auth-method configurations; reuses managed UA client secrets unless `--rotate` is passed.
+- **K8s Auth wiring.** Uses `tokenReviewMode: "api"` and the `infisical-token-reviewer` SA's long-lived JWT (provisioned by A.6) so Infisical can validate the operator's projected tokens via TokenReview. Restricts `allowedNamespaces=infisical-operator` and `allowedNames=infisical-operator-se-controller-manager`.
+- **Bitwarden writes.** Universal Auth client_id/secret pairs land at `homelab/bootstrap/infisical-{ansible,terraform}-client-{id,secret}`, matching the existing `homelab/bootstrap/...` namespace.
+- **Path scoping.** Each identity gets one `additional-privilege` per glob (read + describe-secret on `secrets`, plus read on `secret-folders`). Slugs are deterministic from the path so re-runs are safe. Glob format: `/kubernetes/**`, `/ansible/**`, `/kubernetes/argocd/**`, `/terraform/**`, `/ansible/proxmox/**` (cross-scope read for Terraform).
+- **Outputs.** Prints all three identity IDs at the end. Operator ID gets pasted into `config.yaml` as `infisical_operator_identity_id`; Ansible/Terraform IDs are referenced from rbw at runtime.
+
+**Invocation:**
+
+```bash
+source scripts/load-bootstrap-secrets.sh
+export INFISICAL_PROJECT_ID=<the-lab-project-id>   # from Infisical UI
+scripts/create-machine-identities.sh               # create / refresh
+scripts/create-machine-identities.sh --rotate      # re-issue UA secrets
+```
+
+### A.8 Canary Health Check ⏳
+
+**Status:** Manifest authored 2026-04-18 (`templates/kubernetes/infrastructure/infisical-canary/canary.yaml.j2`); enables itself once `infisical_operator_identity_id` + `infisical_project_slug` are set in `config.yaml` after A.7 completes. Pending source value seed (`/canary/heartbeat=ok`) and operator reconcile.
 
 Before migrating real applications, create a low-risk canary `InfisicalSecret` in a non-critical namespace.
 
@@ -1083,6 +1120,19 @@ Do not rely on ArgoCD sync waves alone to prove that an operator-managed Secret 
 3. Only then allow the consuming workload, Helm release, or bootstrap job to proceed.
 
 This keeps the current app auto-discovery model intact and avoids introducing a separate Argo application topology just to sequence secret sync.
+
+**Implementation:**
+
+- New directory `kubernetes/infrastructure/infisical-canary/` (its own ArgoCD app via cluster-apps auto-discovery, namespace = `infisical-canary`).
+- Source template `templates/kubernetes/infrastructure/infisical-canary/canary.yaml.j2` is gated on `infisical_operator_identity_id` + `infisical_project_slug` so the directory ships harmlessly until A.7 fills those values into `config.yaml`.
+- Once enabled, the InfisicalSecret reads `/canary` from env `prod`, syncs `heartbeat` into a managed Secret named `canary-heartbeat`, and uses the operator's K8s Auth identity bound to SA `infisical-operator-se-controller-manager` in `infisical-operator` ns.
+- Source value seeded once via the admin-identity token:
+  ```bash
+  INFISICAL_TOKEN=$(kubectl -n infisical get secret infisical-admin-identity \
+    -o jsonpath='{.data.token}' | base64 -d) \
+    infisical secrets set --domain "$INFISICAL_API_URL/api" \
+      --projectId <project-id> --env prod --path /canary heartbeat=ok
+  ```
 
 ### A.9 Migrate Kubernetes Secrets (Per-App)
 

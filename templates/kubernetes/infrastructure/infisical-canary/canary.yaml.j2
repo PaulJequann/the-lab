@@ -1,0 +1,46 @@
+{% if infisical_operator_identity_id and infisical_project_slug %}
+---
+# Permanent canary InfisicalSecret per plan §A.8.
+# If reconciliation breaks, the managed Secret `canary-heartbeat` goes stale
+# and ArgoCD surfaces the InfisicalSecret status as Degraded.
+#
+# Seed the source value once (idempotent):
+#   INFISICAL_TOKEN=$(kubectl -n infisical get secret infisical-admin-identity \
+#     -o jsonpath='{.data.token}' | base64 -d) \
+#     infisical secrets set --domain $INFISICAL_API_URL \
+#       --projectId <project-id> --env {{ infisical_env_slug }} \
+#       --path /canary heartbeat=ok
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: canary
+  namespace: infisical-canary
+  labels:
+    app.kubernetes.io/managed-by: infisical-operator
+    app.kubernetes.io/part-of: infisical-canary
+spec:
+  hostAPI: {{ infisical_internal_url }}/api
+  syncConfig:
+    resyncInterval: 60s
+  authentication:
+    kubernetesAuth:
+      identityId: {{ infisical_operator_identity_id }}
+      autoCreateServiceAccountToken: true
+      serviceAccountRef:
+        name: {{ infisical_operator_service_account }}
+        namespace: {{ infisical_operator_namespace }}
+      secretsScope:
+        projectSlug: {{ infisical_project_slug }}
+        envSlug: {{ infisical_env_slug }}
+        secretsPath: /canary
+        recursive: false
+  managedKubeSecretReferences:
+    - secretName: canary-heartbeat
+      secretNamespace: infisical-canary
+      creationPolicy: Owner
+      template:
+        includeAllSecrets: true
+{% else %}
+# Canary disabled: set infisical_operator_identity_id and infisical_project_slug
+# in config.yaml after running scripts/create-machine-identities.sh (plan §A.7).
+{% endif %}

@@ -1,0 +1,2 @@
+# Canary disabled: set infisical_operator_identity_id and infisical_project_slug
+# in config.yaml after running scripts/create-machine-identities.sh (plan §A.7).

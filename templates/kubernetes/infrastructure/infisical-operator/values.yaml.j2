@@ -1,0 +1,8 @@
+secrets-operator:
+  hostAPI: "{{ infisical_internal_url }}/api"
+  controllerManager:
+    manager:
+      extraEnv:
+        - name: INFISICAL_URL
+          value: "{{ infisical_internal_url }}"
+  installCRDs: true

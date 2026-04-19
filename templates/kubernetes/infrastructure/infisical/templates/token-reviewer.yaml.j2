@@ -1,0 +1,36 @@
+---
+# ServiceAccount + ClusterRoleBinding used by Infisical to validate
+# Kubernetes Auth tokens via the TokenReview API. The Infisical Kubernetes
+# Operator authenticates by sending its own short-lived ProjectedToken;
+# Infisical hits the cluster's TokenReview endpoint using THIS account's JWT.
+#
+# Long-lived JWT is provisioned via the explicit token Secret below; the
+# scripts/create-machine-identities.sh helper reads it when configuring
+# Kubernetes Auth on the operator machine identity (plan §A.7).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: infisical-token-reviewer
+  namespace: {{ infisical_namespace }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: infisical-token-reviewer-token
+  namespace: {{ infisical_namespace }}
+  annotations:
+    kubernetes.io/service-account.name: infisical-token-reviewer
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: infisical-token-reviewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: infisical-token-reviewer
+    namespace: {{ infisical_namespace }}

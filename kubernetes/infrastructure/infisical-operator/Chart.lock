@@ -1,0 +1,6 @@
+dependencies:
+- name: secrets-operator
+  repository: https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/
+  version: 0.10.32
+digest: sha256:33d8b4471364aead7d5af13bfc5578544d8671fa361b3640ac99e5670ffef292
+generated: "2026-04-18T23:35:51.615407714-04:00"

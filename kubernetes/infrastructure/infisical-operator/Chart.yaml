@@ -1,0 +1,11 @@
+apiVersion: v2
+name: infisical-operator
+description: Infisical Kubernetes Secrets Operator (umbrella chart wrapping secrets-operator)
+type: application
+version: 1.0.0
+appVersion: "0.10.32"
+
+dependencies:
+  - name: secrets-operator
+    version: 0.10.32
+    repository: https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/

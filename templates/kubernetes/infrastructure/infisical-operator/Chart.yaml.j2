@@ -1,0 +1,11 @@
+apiVersion: v2
+name: infisical-operator
+description: Infisical Kubernetes Secrets Operator (umbrella chart wrapping secrets-operator)
+type: application
+version: 1.0.0
+appVersion: "{{ infisical_operator_chart_version }}"
+
+dependencies:
+  - name: secrets-operator
+    version: {{ infisical_operator_chart_version }}
+    repository: {{ infisical_operator_chart_repo }}

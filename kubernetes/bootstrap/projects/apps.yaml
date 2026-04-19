@@ -55,6 +55,8 @@ spec:
       kind: HTTPRoute
     - group: bitnami.com
       kind: SealedSecret
+    - group: secrets.infisical.com
+      kind: InfisicalSecret
 
   # Block dangerous configs
   namespaceResourceBlacklist:

@@ -1,0 +1,8 @@
+secrets-operator:
+  hostAPI: "http://infisical.infisical.svc.cluster.local:8080/api"
+  controllerManager:
+    manager:
+      extraEnv:
+        - name: INFISICAL_URL
+          value: "http://infisical.infisical.svc.cluster.local:8080"
+  installCRDs: true
