@@ -1155,7 +1155,20 @@ This keeps the current app auto-discovery model intact and avoids introducing a 
       --projectId <project-id> --env prod --path /canary heartbeat=ok
   ```
 
-### A.9 Migrate Kubernetes Secrets (Per-App)
+### A.9 Migrate Kubernetes Secrets (Per-App) ✅
+
+**Status:** ✅ Complete — verified 2026-04-19. cert-manager, glitchtip, and deeptutor all migrated to `InfisicalSecret` CRDs with native Secrets composed at operator reconcile time. Empirical probe against `/kubernetes/cert-manager` confirmed operator identity has `/kubernetes/**` read access and end-to-end sync works.
+
+**Execution deviations from plan wording:**
+
+- **"PreSync wait Job" → sync-wave ordering.** PreSync hooks run strictly before the Sync phase, but the `InfisicalSecret` CRD is applied during Sync — a literal PreSync wait Job would deadlock. Implemented instead as a reusable Jinja macro `templates/kubernetes/_macros/wait_for_secret.yaml.j2` emitting SA + Role (`resourceNames`-scoped) + RoleBinding + Job, all annotated with `argocd.argoproj.io/sync-wave: "-5"`. The `InfisicalSecret` itself carries wave `-10` so it applies first. ArgoCD pauses between waves until resources are healthy (a Job is healthy only when succeeded), giving the same "block until Secret ready" guarantee via a sound mechanism.
+- **Macro excluded from output via `makejinja.toml` `exclude_patterns = ["_macros/*"]`** so the macro file isn't rendered to `kubernetes/_macros/`.
+- **Glitchtip RBAC fully removed.** The trimmed bootstrap Job no longer hits the k8s API (no artifacts Secret write), so the SA + Role + RoleBinding for `glitchtip-bootstrap` were deleted, not just the Role.
+- **URL-encoding deferred.** The operator-side `template.data` composes `DATABASE_URL`/`REDIS_URL` without URL-encoding. Current passwords are hex so this is a no-op; documented in the InfisicalSecret manifest that rotation must keep passwords URL-safe or the operator template needs extending.
+- **Deleted vars from config.yaml (16 total):** 3 deeptutor API keys; 13 glitchtip keys (secret_key, email_url, admin_username/email/password, 7 bootstrap_* keys, bootstrap_mcp_token). Kept `glitchtip_default_from_email` (CONFIG, now plain env on Deployment) and `glitchtip_bootstrap_mcp_token_label` (non-secret, plain env on Job). `cloudflare_email`/`cloudflare_api_token`/`glitchtip_postgres_password`/`glitchtip_redis_password` retained — consumed by Ansible roles that A.10 handles.
+- **`acme_contact_email` added to config.yaml** and inlined into ClusterIssuer template (replaces `cloudflare_email` reference per plan).
+- **Empirical operator read verification:** deployed a throwaway `InfisicalSecret` at `infisical-a9-probe/a9-probe` reading `/kubernetes/cert-manager` → managed Secret populated with `cloudflare_api_token` → cleanup done. Confirmed `/kubernetes/**` grant is live alongside the `/canary/**` grant from A.8.
+- **Operator connectivity glitch:** operator logs showed transient `"dial tcp 10.43.99.62:8080: connect: operation not permitted"` errors (Cilium/netfilter EPERM) that self-healed. Canary Secret stable, probe succeeded after operator restart. Not blocking; monitor.
 
 DeepTutor is part of the retained app set. Its broader redesign/upgrade remains deferred, but its current three runtime API-key secrets should still migrate during Phase A so the Sealed Secrets controller can be removed globally.
 
