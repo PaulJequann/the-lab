@@ -4,3 +4,4 @@ jinja_suffix = ".j2"
 force = true
 import_paths = ["./makejinja"]
 loaders = ["plugin:Plugin"]
+exclude_patterns = ["_macros/*"]
