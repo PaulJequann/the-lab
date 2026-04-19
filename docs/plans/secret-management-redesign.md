@@ -1042,9 +1042,25 @@ spec:
 
 **Architectural note — namespace placement:** The cluster-apps ApplicationSet hardcodes `namespace = directory basename`, so the operator gets its own `infisical-operator` namespace rather than co-locating with the Infisical server. Same pattern as every other app in this repo.
 
-### A.7 Create Machine Identities ⏳
+### A.7 Create Machine Identities ✅
 
-**Status:** Script + supporting RBAC authored 2026-04-18 (`scripts/create-machine-identities.sh`); pending operator deploy + workstation invocation to populate Bitwarden and emit identity IDs.
+**Status:** ✅ Complete — executed 2026-04-19 against project `the-lab` (slug `the-lab-kjtq`, env `prod`). All three identities created, scoped privileges granted, Universal Auth client credentials written to Bitwarden under `homelab/bootstrap/infisical-{ansible,terraform}-client-{id,secret}`.
+
+**Identity IDs captured:**
+- Operator (K8s Auth): `3faa50da-6467-4568-aa22-da12507306de` — pasted into `config.yaml` as `infisical_operator_identity_id`
+- Ansible (Universal Auth): `3ab1d732-ee66-4da3-8db9-be382a12198c`
+- Terraform (Universal Auth): `8f24e774-c647-4399-b7a0-daaaffc78fbc`
+
+**Gotchas surfaced during execution (captured in script + this section so future DR runs don't relearn them):**
+
+1. **Helm name truncation.** The secrets-operator chart truncates the SA name to fit a 63-char limit; actual SA is `infisical-opera-controller-manager`, not `infisical-operator-se-controller-manager` as a naive `release-name-se-...` template suggests. K8s Auth `allowedNames` and the canary `serviceAccountRef.name` use the truncated form.
+2. **Infisical SSRF block on internal hostnames.** The default deployment refuses `https://kubernetes.default.svc.cluster.local` as a Kubernetes Auth `kubernetesHost` with `BadRequest: Local IPs not allowed as URL`. Set `ALLOW_INTERNAL_IP_CONNECTIONS=true` on the Infisical server (added to the `infisical-secrets` bootstrap Secret keys; document in A.4 bootstrap if rebuilding).
+3. **DNS resolution requires FQDN.** Infisical's TokenReview client needs the full `kubernetes.default.svc.cluster.local` form; the short `kubernetes.default.svc` fails with `queryA ENOTFOUND`.
+4. **`describe-secret` enum is `describeSecret`.** The action enum on the v2 additional-privilege endpoint is camelCase, not the kebab-case form a few docs pages suggest.
+5. **`type` field is required on v2 privileges.** Despite being absent from the public OpenAPI schema, the v1.8.0 server demands `type: { isTemporary: false }` (object, not the string `"permanent"`).
+6. **rbw add silently skips $EDITOR without a TTY.** When stdin isn't a TTY, `rbw add` succeeds but never invokes the editor — entries are created with empty passwords. Wrap in `script(1)` to fake a PTY. Also: rbw doesn't shell-expand $EDITOR, so the value must be an executable path (not `cp /tmp/foo`).
+
+Create three separate machine identities in Infisical, each scoped to the minimum paths it needs.
 
 Create three separate machine identities in Infisical, each scoped to the minimum paths it needs.
 
@@ -1095,9 +1111,14 @@ scripts/create-machine-identities.sh               # create / refresh
 scripts/create-machine-identities.sh --rotate      # re-issue UA secrets
 ```
 
-### A.8 Canary Health Check ⏳
+### A.8 Canary Health Check ✅
 
-**Status:** Manifest authored 2026-04-18 (`templates/kubernetes/infrastructure/infisical-canary/canary.yaml.j2`); enables itself once `infisical_operator_identity_id` + `infisical_project_slug` are set in `config.yaml` after A.7 completes. Pending source value seed (`/canary/heartbeat=ok`) and operator reconcile.
+**Status:** ✅ Complete — verified 2026-04-19. Operator authenticated via K8s Auth, fetched `/canary/heartbeat=ok` from Infisical, materialized `canary-heartbeat` Secret in `infisical-canary` ns. ArgoCD app `infisical-canary` is Synced/Healthy at revision `eabc4aad`.
+
+**Two follow-on fixes captured in the script + manifest:**
+
+- The operator identity needs read on `/canary/**` in addition to `/kubernetes/**`. Without it the operator authenticates fine and creates the managed Secret but populates it with zero keys.
+- The InfisicalSecret CRD validator defaults `spec.managedKubeSecretReferences[].secretType` to `Opaque` server-side. Omit it from git and ArgoCD permanently shows the CRD as OutOfSync. Set it explicitly.
 
 Before migrating real applications, create a low-risk canary `InfisicalSecret` in a non-critical namespace.
 
