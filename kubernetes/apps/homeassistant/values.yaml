@@ -56,9 +56,7 @@ app-template:
     config:
       enabled: true
       type: persistentVolumeClaim
-      storageClass: nfs-csi
-      accessMode: ReadWriteOnce
-      size: 10Gi
+      existingClaim: homeassistant-fast-local
       globalMounts:
         - path: /config
     dbus:

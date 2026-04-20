@@ -28,21 +28,23 @@ render_templates() {
     --data "${data_file}"
 }
 
-make_cutover_config() {
+write_config_variant() {
   local output_file="$1"
+  local enabled="$2"
 
-  python3 - "${REPO_ROOT}/config.yaml" "${output_file}" <<'PY'
+  python3 - "${REPO_ROOT}/config.yaml" "${output_file}" "${enabled}" <<'PY'
 import sys
 import yaml
 
 src, dst = sys.argv[1], sys.argv[2]
+enabled = sys.argv[3].lower() == "true"
 with open(src) as f:
     data = yaml.safe_load(f)
 
-data["homeassistant_fast_local_enabled"] = True
-data["sonarr_fast_local_enabled"] = True
-data["radarr_fast_local_enabled"] = True
-data["overseerr_fast_local_enabled"] = True
+data["homeassistant_fast_local_enabled"] = enabled
+data["sonarr_fast_local_enabled"] = enabled
+data["radarr_fast_local_enabled"] = enabled
+data["overseerr_fast_local_enabled"] = enabled
 
 with open(dst, "w") as f:
     yaml.safe_dump(data, f, sort_keys=False)
@@ -50,7 +52,9 @@ PY
 }
 
 test_default_render_is_staged_only() {
-  render_templates
+  local staged_config="${TMPDIR}/staged-config.yaml"
+  write_config_variant "${staged_config}" false
+  render_templates "${staged_config}"
 
   local local_path_manifest="${TMPDIR}/kubernetes/infrastructure/local-path-storage/local-path-provisioner.yaml"
   local homeassistant_values="${TMPDIR}/kubernetes/apps/homeassistant/values.yaml"
@@ -73,7 +77,7 @@ test_default_render_is_staged_only() {
 
 test_cutover_render_uses_fast_local_claims() {
   local cutover_config="${TMPDIR}/cutover-config.yaml"
-  make_cutover_config "${cutover_config}"
+  write_config_variant "${cutover_config}" true
   render_templates "${cutover_config}"
 
   local homeassistant_values="${TMPDIR}/kubernetes/apps/homeassistant/values.yaml"

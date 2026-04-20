@@ -25,6 +25,8 @@ spec:
                 fsGroup: 1000
                 runAsUser: 1000
                 runAsGroup: 1000
+              nodeSelector:
+                kubernetes.io/hostname: jamahl
             containers:
               app:
                 image:
@@ -60,9 +62,7 @@ spec:
           config:
             enabled: true
             type: persistentVolumeClaim
-            storageClass: nfs-csi
-            accessMode: ReadWriteOnce
-            size: 2Gi
+            existingClaim: radarr-fast-local
             globalMounts:
               - path: /config
           media:
