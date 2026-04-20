@@ -1508,85 +1508,245 @@ Current known Terraform secret-bearing inputs:
 
 ### A.12 Phase A Cleanup
 
+**Execution scope for this session: A.12.1–A.12.5 only.** The DR runbook and A.13 trust-chain heartbeat are deferred to a follow-up session. Phase A is not considered closed until those land, but the destructive refactor in A.12 is independently valuable and ships first.
+
+**Commit granularity:** one commit per sub-phase (A.12.1, A.12.2, A.12.3, A.12.4, A.12.5). Between commits: `git push`, wait for the affected ArgoCD `Application` resources to report `Healthy`, run the smoke checks listed under each sub-phase. Do not start the next sub-phase until the previous one is green in-cluster. If a sub-phase fails, revert that commit rather than chaining fixes on top.
+
+**Pre-execution state verified 2026-04-19:**
+
+- No `SealedSecret` CRs exist in the cluster (`kubectl get sealedsecrets -A` returns `No resources found`). The A.9 migration already replaced every consumer with an `InfisicalSecret`-backed native Secret (cert-manager `cloudflare-api-token`, deeptutor `deeptutor-secrets`, glitchtip `glitchtip-secrets`, plus the permanent `infisical-canary/canary-heartbeat`). A.12.2's hard gate is therefore already clear before execution starts — no additional consumer audit is required.
+- The live `argocd-secret/admin.password` hash (`$2b$12$…`) and the value at Infisical `/kubernetes/argocd/admin_password_hash` (`$2a$10$…`) use different bcrypt variants but **both verify against the same plaintext** (`config.yaml` `argocd_admin_password`). The A.12.1 cutover will overwrite the live hash with the Infisical-sourced one; there is no lockout risk because the effective password is unchanged. Confirmed with a bcrypt check-pw round-trip on both hashes.
+- The live `argocd-secret/server.secretkey` is **not** in Infisical yet. It must be extracted and populated to Infisical (and backed up to Bitwarden) as a pre-flight step before A.12.1 ships, so the InfisicalSecret reconcile writes the same value that's already in use — preventing ArgoCD session invalidation.
+- No `community.sops` references remain in `ansible/requirements.yml`.
+- Legacy pre-Taskfile `configure` + `configureOLD` shell scripts and the `tmpl/` directory they consume still sit at the repo root. They contain active `sops`, `age`, and `gitops get bcrypt-hash` references and will fail the "no Age references in tracked files" final gate.
+- `scripts/populate-infisical.sh` and `tests/populate-infisical-test.sh` are the A.5 one-shot migrators. They call `sops -d` on files deleted in A.10/A.11; they are now broken if invoked and are not referenced by any Taskfile.
+
+**Bitwarden naming convention for new argocd-related DR material:** `homelab/bootstrap/argocd-admin-password-hash` (already present, planted in A.5) and `homelab/bootstrap/argocd-server-secretkey` (new, planted during A.12.1 pre-flight). Matches the existing flat `homelab/bootstrap/*` convention for every Infisical seed value.
+
 #### A.12.1 ArgoCD helm-secrets Teardown
 
-The ArgoCD deployment has deep helm-secrets integration that requires a dedicated teardown. This is effectively a full ArgoCD Helm values rewrite.
+The ArgoCD deployment has deep helm-secrets integration. This sub-phase refactors `kubernetes/core/argo-cd/` into a full Helm chart (mirroring the cert-manager / glitchtip pattern from A.9) so ArgoCD self-manages via a vendored chart dependency plus an `InfisicalSecret` that owns `argocd-secret`.
 
-**Remove from `ansible/roles/argocd/templates/argocd-helm-values.yaml.j2`:**
+**Target in-repo layout for `kubernetes/core/argo-cd/`:**
 
-- All 11 `HELM_SECRETS_*` environment variables (`HELM_SECRETS_CURL_PATH`, `HELM_SECRETS_SOPS_PATH`, `HELM_SECRETS_VALS_PATH`, `HELM_SECRETS_KUBECTL_PATH`, `HELM_SECRETS_BACKEND`, `HELM_SECRETS_VALUES_ALLOW_SYMLINKS`, `HELM_SECRETS_VALUES_ALLOW_ABSOLUTE_PATH`, `HELM_SECRETS_VALUES_ALLOW_PATH_TRAVERSAL`, `HELM_SECRETS_WRAPPER_ENABLED`, `HELM_SECRETS_DECRYPT_SECRETS_IN_TMP_DIR`, `HELM_SECRETS_HELM_PATH`)
-- The init container that downloads helm-secrets, SOPS, and Age binaries
-- The Age key Secret volume mount (`helm-secrets-private-keys`)
-- The custom `helm.sh` wrapper script setup
+```
+kubernetes/core/argo-cd/
+  Chart.yaml           # depends on argoproj/argo-cd 8.1.2
+  Chart.lock
+  values.yaml          # inline values; configs.secret.create:false, resource.exclusions
+  charts/              # vendored argo-cd chart tarball (helm dependency build)
+  templates/
+    argocd.infisicalsecret.yaml  # materializes argocd-secret
+    argocd-ingress.yaml          # moved from repo root
+```
 
-**Remove from `ansible/roles/argocd/tasks/main.yaml`:**
+Files to delete from `kubernetes/core/argo-cd/` during this sub-phase:
 
-- The "Create age key secret for helm-secrets" task
+- `app.yaml` — the ApplicationSet at `kubernetes/bootstrap/applicationsets/cluster-apps.yaml` auto-generates the `argocd` Application when it sees the chart's `Chart.yaml`, so the explicit Application is redundant.
+- `argocd-ingress.yaml` at the root (moves into `templates/`).
+- `secrets/ghcr-registry.secret.yaml` — orphaned; zero `imagePullSecrets` consumers in the repo. Remove the parent `secrets/` directory once empty.
+- `secrets.sops.yaml`, `secrets.sops.yaml.checksum`, `secrets.sops.yaml.encrypted.bak` — helm-secrets artifacts replaced by `values.yaml` + the InfisicalSecret.
 
-**Rewrite `templates/kubernetes/core/argo-cd/app.yaml.j2`:**
+**`values.yaml` contents** (the former helm-secrets-rendered values, now deterministic):
 
-- Remove the `helm.valueFiles` entry that calls `build_helm_secrets_path(...)`
-- Stop referencing `secrets.sops.yaml` as a remote helm-secrets value file
-- Ensure the ArgoCD application definition no longer depends on helm-secrets, SOPS, Age, or the helper function in `makejinja/plugin.py`
+- `global.domain`
+- `configs.cm.admin.enabled: "true"`, `configs.cm.application.instanceLabelKey`, `configs.cm.resource.exclusions` carrying the `app.kubernetes.io/managed-by: infisical-operator` label selector (unchanged from the current live value)
+- `configs.params.server.insecure`
+- `configs.secret.create: false` — Helm must not own `argocd-secret` post-refactor; ownership transfers to the Infisical operator
+- `server.service.type: ClusterIP`
+- `repoServer.serviceAccount` + `repoServer.rbac` (keep existing shape)
+- **Removed entirely:** all 11 `HELM_SECRETS_*` env vars, the `download-tools` init container, the `helm-secrets-private-keys` volume + mount, the custom `helm.sh` wrapper, and the `helm.valuesFileSchemes` key in `configs.cm` (no longer used now that `secrets+age-import://` URIs are gone)
 
-**Remove from `ansible/roles/argocd/defaults/main.sops.yaml` (file deleted entirely in A.10):**
+**`templates/argocd.infisicalsecret.yaml`** — the new InfisicalSecret. Spec:
 
-- `helm_secrets_age_key_secret_name`
-- `helm_secrets_age_key_secret_namespace`
+- `managedKubeSecretReferences[0].secretName: argocd-secret` (same namespace), `secretType: Opaque`, `creationPolicy: Owner`
+- Labels include `app.kubernetes.io/managed-by: infisical-operator` so the `resource.exclusions` rule on argocd-cm keeps ArgoCD from pruning it
+- `template.includeAllSecrets: false`, `template.data` writes exactly two keys:
+  - `admin.password: '{{ \`{{ .admin_password_hash.Value }}\` }}'`
+  - `server.secretkey: '{{ \`{{ .server_secretkey.Value }}\` }}'`
+  - (Double-escape pattern from A.9: Helm renders the chart, then the operator resolves its own Go-template context at reconcile time.)
+- `admin.passwordMtime` is deliberately **not** replicated. ArgoCD treats it as cosmetic metadata; the UI will show "unknown" until the next admin password change.
+- `kubernetesAuth` uses the same `identityId` and SA as the existing cert-manager / glitchtip InfisicalSecrets (`infisical-opera-controller-manager` in `infisical-operator` namespace).
 
-**Remove from `config.yaml`:**
+**Chart refactor also covers `templates/kubernetes/core/argo-cd/`:**
+
+- Delete `secrets.sops.yaml.j2` (its contents fold into the chart's `values.yaml`)
+- Delete `app.yaml.j2` (ApplicationSet auto-generates the Application)
+- Move `argocd-ingress.yaml.j2` into a chart-template form (if it needs Jinja at all; more likely it lives directly in the chart's `templates/` as a Helm-templated manifest)
+- Add `Chart.yaml.j2`, `values.yaml.j2`, `templates/argocd.infisicalsecret.yaml.j2`
+
+**`ansible/roles/argocd/` updates:**
+
+- `templates/argocd-helm-values.yaml.j2` stripped to the minimal bootstrap set needed to get `argocd-server` running with `configs.secret.create: false`. Approximately: `global.domain`, `configs.secret.create: false`, `server.service.type: ClusterIP`, `configs.params.server.insecure`. The role's values intentionally do **not** mirror the full in-repo chart `values.yaml`; ArgoCD self-sync takes over after first install and reconciles any drift. All 11 `HELM_SECRETS_*` env vars, the init container, the age volume mount, and the wrapper script disappear.
+- `tasks/main.yaml`:
+  - Delete the "Create age key secret for helm-secrets" task.
+  - **Add** a new task that, before the `helm install`, fetches `admin_password_hash` + `server_secretkey` from Infisical `/kubernetes/argocd` and `kubectl apply`s `argocd-secret` with `admin.password` + `server.secretkey`. This solves the chicken-and-egg: on a fresh cluster, `argocd-server` needs `argocd-secret` before it boots; the InfisicalSecret-backed reconcile only starts after ArgoCD is running and has applied the chart's templates.
+  - The existing "Fetch ArgoCD secrets from Infisical" task still runs for the `admin_password_hash` lookup (consumed by the minimal values template if needed).
+- `defaults/main.yaml` (and its source template `templates/ansible/roles/argocd/defaults/main.yaml.j2`): remove the two `helm_secrets_age_key_secret_name` / `helm_secrets_age_key_secret_namespace` entries.
+
+**`ansible/roles/k3s/tasks/main.yaml`:** remove the "Install Helm Secrets plugin" `kubernetes.core.helm_plugin` task (lines ~166–170).
+
+**`config.yaml` removals (A.12.1 scope):**
 
 - `helm_secrets_age_key_secret_name`
 - `helm_secrets_age_key_name`
+- `helm_secrets_age_key_secret_namespace`
 
-**Remove from `ansible/roles/k3s/tasks/main.yaml`:**
+(Plaintext secret values move in A.12.3; the argocd-specific ones listed here are the helm-secrets plumbing only.)
 
-- The Helm Secrets plugin installation task
+**Pre-flight (operator runs once, on the workstation, before pushing the A.12.1 commit):**
 
-**Verify after teardown:**
+1. Extract the live `server.secretkey` and store in Bitwarden:
+   ```bash
+   kubectl -n argocd get secret argocd-secret \
+     -o jsonpath='{.data.server\.secretkey}' | base64 -d \
+     | RBW_PROFILE=bootstrap rbw create homelab/bootstrap/argocd-server-secretkey
+   ```
+2. Populate Infisical `/kubernetes/argocd/server_secretkey` with the same value, using the admin-identity token:
+   ```bash
+   export INFISICAL_API_URL=https://infisical.local.bysliek.com
+   export INFISICAL_TOKEN=$(kubectl -n infisical get secret infisical-admin-identity \
+     -o jsonpath='{.data.token}' | base64 -d)
+   infisical secrets set \
+     server_secretkey="$(RBW_PROFILE=bootstrap rbw get homelab/bootstrap/argocd-server-secretkey)" \
+     --path /kubernetes/argocd --env prod \
+     --projectId 914ba6ac-d254-403c-9f38-d2e3adf702b8
+   ```
+3. Pre-label the live `argocd-secret` so ArgoCD does not prune it when the helm release drops ownership:
+   ```bash
+   kubectl -n argocd label secret argocd-secret \
+     app.kubernetes.io/managed-by=infisical-operator --overwrite
+   ```
+4. (Optional safety net) Add Helm's `keep` annotation as belt-and-suspenders:
+   ```bash
+   kubectl -n argocd annotate secret argocd-secret \
+     helm.sh/resource-policy=keep --overwrite
+   ```
+5. Commit the A.12.1 refactor and push. ArgoCD self-syncs: Helm `upgrade` with `secret.create:false` leaves `argocd-secret` untouched (label + annotation protect it), the new InfisicalSecret reconciles on top within 60s writing the same `admin.password` + `server.secretkey` values that are already in-cluster.
 
-- ArgoCD starts without the init container or volume mounts
-- All existing ArgoCD Applications still sync successfully
+Document these pre-flight commands in the A.12.1 commit message body so they are discoverable via `git log` during future DR or re-execution.
+
+**Verify after A.12.1:**
+
+- `kubectl -n argocd wait application/argocd --for=condition=Healthy --timeout=5m`
+- `kubectl -n argocd get pods` shows `argocd-server`, `argocd-repo-server`, `argocd-application-controller` all `Running` with no `download-tools` init container
+- `kubectl -n argocd get secret argocd-secret -o yaml` shows `managed-by: infisical-operator` label and contains `admin.password` + `server.secretkey` (both matching pre-flight values)
+- `kubectl -n argocd get infisicalsecret argocd -o yaml` shows a recent `lastReconcile` timestamp
 - No `helm-secrets-private-keys` Secret remains in the argocd namespace
+- `https://argocd.local.bysliek.com/` UI login works with the existing admin password
+- All other ArgoCD Applications remain `Healthy`
 
 #### A.12.2 Sealed Secrets Removal
 
-**Hard gate before teardown:**
-
-- Do **not** begin A.12.2 until every current SealedSecret consumer has a verified replacement native Kubernetes Secret already present
-- Verify this explicitly for `cert-manager`, `glitchtip`, and `deeptutor`
-- Remove old SealedSecret artifacts only after the replacement Secrets are present and the consuming apps remain healthy
+**Hard gate already cleared** (see "Pre-execution state verified" above — no SealedSecret CRs in the cluster, all four replacement Secrets live). Execute the deletions below directly.
 
 - Delete `kubernetes/core/sealed-secrets/` (entire directory)
-- Delete `templates/kubernetes/core/sealed-secrets/` if it exists
-- Delete `kubernetes/core/argo-cd/secrets/ghcr-registry.secret.yaml` (orphaned — zero `imagePullSecrets` references in the repo; artifact from prior ARC-runner cleanup). Delete the parent `kubernetes/core/argo-cd/secrets/` directory if it becomes empty.
-- Remove `SealedSecret` from the apps ArgoCD project whitelist (`kubernetes/bootstrap/projects/apps.yaml`)
-- Remove the SealedSecret-specific `ignoreDifferences` rule from `kubernetes/bootstrap/applicationsets/cluster-apps.yaml` after Sealed Secrets are gone
-- Remove `bitnami-labs/sealed-secrets` chart repo from both the core and infrastructure ArgoCD projects' `spec.sourceRepos`
-- Delete `.sealed-secrets-public-cert.pem` only after all `seal_secret()`-backed templates are gone from the active render path
-- Remove `seal_secret()` function from `makejinja/plugin.py`
-- Remove `kubeseal_version` and `sealed_secrets_chart_version` from `config.yaml`
+- Delete `templates/kubernetes/core/sealed-secrets/` (entire directory)
+- Remove `SealedSecret` (`group: bitnami.com, kind: SealedSecret`) from `kubernetes/bootstrap/projects/apps.yaml` `namespaceResourceWhitelist` and the source template at `templates/kubernetes/bootstrap/projects/apps.yaml.j2`
+- Remove the `bitnami.com / SealedSecret` `ignoreDifferences` rule from `kubernetes/bootstrap/applicationsets/cluster-apps.yaml` and its source template
+- Remove `https://bitnami-labs.github.io/sealed-secrets` from `spec.sourceRepos` in both `kubernetes/bootstrap/projects/core.yaml` and `infrastructure.yaml` (and their source templates)
+- Delete `.sealed-secrets-public-cert.pem` at the repo root
+- Remove `seal_secret()` from `makejinja/plugin.py` and from the `globals()` list
+- Remove `kubeseal_version`, `sealed_secrets_chart_version`, and `sealed_secrets_chart_repo` from `config.yaml`
+
+(Note: `kubernetes/core/argo-cd/secrets/ghcr-registry.secret.yaml` is deleted in A.12.1 as part of the chart refactor, not here, because A.12.1's new chart layout removes the `secrets/` directory outright.)
+
+**Verify after A.12.2:**
+
+- ArgoCD prunes the `sealed-secrets-controller` Deployment from `kube-system` automatically (since its source app directory is gone). Confirm with `kubectl -n kube-system get deployment sealed-secrets-controller` returning `NotFound` within ~5 min.
+- All four InfisicalSecret-backed workloads (cert-manager, deeptutor, glitchtip, infisical-canary) remain `Healthy`
+- `kubectl get application -n argocd` shows no `OutOfSync` apps
 
 #### A.12.3 SOPS/Age Removal + Deterministic Template Rendering
 
-- Delete root `.sops.yaml`
-- Delete obsolete `templates/.sops.yaml` and `tmpl/.sops.yaml`
-- Delete `.taskfiles/SecretTasks.yaml`
-- Remove `encrypt-secrets` task from `Taskfile.yml`
-- Rewrite `task configure` so that Phase A keeps it for non-secret work only (`render-templates` + `download-cert-manager-crds`) and no longer invokes any SOPS/Age encryption flow
-- Keep `task configure` rendering the non-secret Kubernetes, Ansible, and Terraform layers, including the shared `proxmox-lxc-service` module and the thin service roots
-- Remove `sops_age_key_file` and any Age-related variables from `config.yaml`
-- Remove all secret values from `config.yaml` (non-secret variables remain, including the service-host catalog used by Terraform/Ansible rendering)
-- Remove `bcrypt_password()` from `makejinja/plugin.py`
-- Remove `seal_secret()` from `makejinja/plugin.py`
-- Verify no active template render path remains nondeterministic
+**File deletions:**
 
-#### A.12.4 Remaining Cleanup
+- `.sops.yaml` at the repo root
+- `templates/.sops.yaml`
+- `tmpl/` — **entire directory** (contains `tmpl/.sops.yaml` plus pre-Taskfile Flux-era SOPS template stubs in `tmpl/kubernetes/`, `tmpl/terraform/`, `tmpl/ansible/` — all consumed only by the legacy `configure` bash script which is removed in A.12.4)
+- `.taskfiles/SecretTasks.yaml` (defines the obsolete `secrets:init` / `secrets:seal` tasks wrapping `kubeseal`)
 
-- Remove `build_helm_secrets_path()` function from `makejinja/plugin.py` only after `templates/kubernetes/core/argo-cd/app.yaml.j2` no longer calls it
-- Add the required `InfisicalSecret` allowlists to the owning AppProjects and remove obsolete SealedSecret policy rules
-- Remove any `community.sops` references from Ansible requirements or configuration
-- Verify no `.sops.yaml`, `.secret.yaml`, `kubeseal`, `bcrypt_password`, or Age key references remain in tracked files
+**`Taskfile.yml` edits:**
+
+- Remove the `env: SOPS_AGE_KEY_FILE` line (line ~13)
+- Remove `secrets: .taskfiles/SecretTasks.yaml` from `includes:`
+- Remove the `task: encrypt-secrets` line from the `configure` task's `cmds:` (now just `render-templates` + `download-cert-manager-crds`)
+- Delete the entire `encrypt-secrets:` task definition (including the `SECRET_FILES:` var and its `preconditions`)
+- In the `deploy-glitchtip-data`, `deploy-honcho`, and `deploy-infisical-data` tasks, **rewrite preconditions**:
+  - **Remove** the `yq eval` guards for secret values (`proxmox_api_token_secret`, `proxmox_lxc_initial_password`, `unifi_username`, `unifi_password` — these live in Infisical / rbw now and the `yq … != "REPLACE_ME"` check is meaningless)
+  - **Keep** the non-secret guards (`proxmox_api_url`, `proxmox_api_token_id`, `proxmox_lxc_template_name` format/shape checks — still useful fail-fast for fresh operators)
+  - **Add** `rbw list | grep homelab/bootstrap/proxmox-api-token` (or equivalent) as the replacement fail-fast for the secret-path preflight where valuable; otherwise rely on `load-bootstrap-secrets.sh`'s existing fail-loud behavior
+
+**`.envrc`:** remove the `export SOPS_AGE_KEY_FILE=…` line.
+
+**`.taskfiles/ClusterTasks.yml`:** remove the `install:` task (lines ~10–23) that applies `flux-system` and references `sops --decrypt`. Flux is not in use; this task is dead code and trips the "no Age refs" final gate. Keep the rest of the file (nodes, pods, certificates helpers).
+
+**`makejinja/plugin.py`:** remove `bcrypt_password()`, `seal_secret()`, and `build_helm_secrets_path()`. Update the `filters()` and `globals()` returns accordingly — only the `urlencode` filter remains. Remove the top-level `bcrypt`, `subprocess`, `yaml`, `os` imports if no longer referenced. `build_helm_secrets_path` is safe to remove in this sub-phase because `templates/kubernetes/core/argo-cd/app.yaml.j2` (its only caller) was deleted in A.12.1.
+
+**`config.yaml` plaintext secret removals** (all now unused at render time — Ansible / Terraform fetch them from Infisical at runtime):
+
+- `argocd_admin_password`
+- `cloudflare_email`, `cloudflare_api_token`
+- `glitchtip_postgres_password`, `glitchtip_redis_password`
+- `honcho_postgres_password`, `honcho_redis_password`, `honcho_auth_jwt_secret`, `honcho_webhook_secret`
+- `honcho_llm_anthropic_api_key`, `honcho_llm_openai_api_key`, `honcho_llm_gemini_api_key`, `honcho_llm_groq_api_key`
+- `honcho_llm_openai_compatible_api_key`, `honcho_llm_vllm_api_key`, `honcho_vector_store_turbopuffer_api_key`
+- `honcho_sentry_dsn`
+- `unifi_password`
+- `proxmox_api_token_secret`, `proxmox_lxc_initial_password`
+
+Keep all non-secret configuration: node inventory, network CIDRs, chart versions, domain names, port numbers, retention windows, LXC sizing, and the service-host catalog used by Terraform/Ansible rendering.
+
+**Verify after A.12.3:**
+
+- `task configure` runs clean, prompts for nothing, exits zero
+- Re-running `task configure` a second time produces no worktree changes (`git status` clean)
+- `grep -rn "SOPS_AGE\|sops_age\|helm-secrets\|helm_secrets\|sealed_secrets\|kubeseal\|bcrypt_password\|seal_secret\|build_helm_secrets_path" --include="*.{yaml,yml,j2,py,sh,toml,md}" .` returns zero matches outside `docs/plans/`
+- All ArgoCD Applications remain `Healthy`
+
+#### A.12.4 Peripheral Sweep
+
+**Legacy bash scripts (delete):**
+
+- `configure` at repo root (pre-Taskfile bootstrap script; calls `sops --encrypt`, `envsubst` against `tmpl/`, and `gitops get bcrypt-hash`)
+- `configureOLD` at repo root (even older variant)
+- `scripts/populate-infisical.sh` (A.5 one-shot migrator; calls `sops -d` on files deleted in A.10/A.11)
+- `tests/populate-infisical-test.sh` (tested the above; dead without it)
+
+**Operator-facing documentation and bootstrap scripts:**
+
+- `docs/host-setup.md`: drop `age`, `sops`, `kubeseal` from the install list; drop the `~/.config/sops/age/keys.txt` bullet; drop the `community.sops` line from the `ansible-galaxy collection list` command
+- `scripts/bootstrap-host-cachyos.sh`: remove `age`, `sops`, `kubeseal` from the pacman package list; remove the `~/.config/sops/age/keys.txt` check
+- `.devcontainer/postCreateCommand.sh`: remove the `SOPS_AGE_DIR` variable and the entire kubeseal install block (version detection, tarball download, install, verify — lines ~148–199)
+- `.devcontainer/devcontainer.json`: confirm no kubeseal/sops extensions remain; prune if present
+
+**ArgoCD project allowlists — add explicit InfisicalSecret rule:**
+
+- `kubernetes/bootstrap/projects/core.yaml` currently has no `namespaceResourceWhitelist` (ArgoCD defaults to allow-all when omitted, which is why cert-manager's InfisicalSecret works today). Add an explicit `namespaceResourceWhitelist` entry for `{group: secrets.infisical.com, kind: InfisicalSecret}` alongside a permissive `{group: "*", kind: "*"}` baseline so the allowlist is declarative rather than implicit. Do the same in the template at `templates/kubernetes/bootstrap/projects/core.yaml.j2`.
+- `kubernetes/bootstrap/projects/infrastructure.yaml` already has a wildcard `{group: "*", kind: "*"}` whitelist — adding an explicit InfisicalSecret entry is optional; skip to avoid churn.
+- `kubernetes/bootstrap/projects/apps.yaml` already has `secrets.infisical.com InfisicalSecret` explicitly allow-listed (added in A.9). No change.
+
+**Final gate — verify no residual references in tracked files** (run before committing A.12.4):
+
+```bash
+# Must return zero matches outside docs/plans/ and git-ignored files
+grep -rn "sops_age\|SOPS_AGE\|helm-secrets\|helm_secrets\|sealed_secrets\|\.sealed-secrets\|kubeseal\|bcrypt_password\|seal_secret\|build_helm_secrets_path\|community\.sops" \
+  --exclude-dir=docs/plans \
+  --exclude-dir=.git \
+  --include="*.yaml" --include="*.yml" --include="*.j2" \
+  --include="*.py" --include="*.sh" --include="*.toml" \
+  --include="*.md" --include="*.tf" --include="*.tfvars" \
+  .
+```
+
+Any residual match is either legitimate (e.g., historical mention in `docs/plans/secret-management-redesign.md` itself — excluded above) or a missed teardown target that must be addressed before the sub-phase is considered done.
+
+**Verify after A.12.4:**
+
+- The grep gate above is clean
+- A freshly-provisioned workstation following the updated `docs/host-setup.md` can run `task configure` without age/sops/kubeseal installed
+- The devcontainer builds without the kubeseal install block (no curl-to-GitHub-releases step)
+- All ArgoCD Applications remain `Healthy`
 
 #### A.12.5 Replace `sops-pre-commit` with `infisical scan`
 
@@ -1595,9 +1755,25 @@ Once SOPS is removed from the repo (A.12.3), the existing `onedr0p/sops-pre-comm
 **Action:**
 
 - Remove the `onedr0p/sops-pre-commit` block from `.pre-commit-config.yaml`.
-- Add an `infisical scan git-changes` hook to the same file. The CLI exposes a pre-commit-friendly `scan git-changes` subcommand that inspects uncommitted changes for leaked secrets; `infisical scan install pre-commit` wires it in automatically, or it can be added manually as a `local` hook invoking the CLI directly.
-- Document the installed hook in the repo README or AGENTS.md (optional — the hook is self-documenting in `.pre-commit-config.yaml`).
-- Verify: stage a deliberately leaky blob (e.g., a dummy AWS access key pattern) and confirm `pre-commit run --all-files` blocks it.
+- Add a **local** hook (not a pinned remote repo) that invokes the operator's installed `infisical` CLI. Rationale: the hook should run against whatever version of the CLI the operator uses day-to-day, avoiding version drift between a pinned pre-commit repo and the locally installed binary. The CLI is already a host dependency (per the updated `docs/host-setup.md` in A.12.4) and available on the devcontainer PATH.
+
+```yaml
+  - repo: local
+    hooks:
+      - id: infisical-scan
+        name: infisical scan git-changes
+        entry: infisical scan git-changes --staged
+        language: system
+        pass_filenames: false
+```
+
+- Do **not** use `infisical scan install pre-commit` — that command writes the hook via side-effect and is harder to review in the repo. The local-hook form above is declaratively visible in the config file.
+
+**Verify after A.12.5:**
+
+- `pre-commit run --all-files` exits 0 on the current tree
+- Staging a deliberately leaky blob (e.g., a dummy string matching `AKIA[0-9A-Z]{16}`) and running `pre-commit run` blocks the commit
+- Removing the leaky blob lets the commit proceed
 
 **Why this belongs in Phase A cleanup:** the migration from SOPS to Infisical removes encryption-at-rest as a safety net. Without a replacement guardrail, a stray paste of a plaintext secret into a template or tfvars file commits clean — the pre-commit hook is the only thing catching it before it hits Git history.
 
