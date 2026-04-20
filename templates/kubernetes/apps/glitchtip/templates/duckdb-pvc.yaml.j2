@@ -5,7 +5,9 @@ metadata:
   name: glitchtip-duckdb
   namespace: {{ glitchtip_namespace }}
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    # Long-lived PVC: NOT a hook. Hook lifecycle (BeforeHookCreation delete
+    # policy) was deleting+recreating this on every sync, racing the
+    # pvc-protection finalizer and risking data loss when pods restarted.
     argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/sync-options: Prune=false
     argocd.argoproj.io/compare-options: IgnoreExtraneous
