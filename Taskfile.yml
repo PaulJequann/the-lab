@@ -10,14 +10,12 @@ dotenv: [".config.env"]
 
 env:
   KUBECONFIG: "{{.ROOT_DIR}}/kubeconfig"
-  SOPS_AGE_KEY_FILE: ~/.config/sops/age/keys.txt
 
 includes:
   ansible: .taskfiles/AnsibleTasks.yml
   cluster: .taskfiles/ClusterTasks.yml
   precommit: .taskfiles/PrecommitTasks.yml
   terraform: .taskfiles/TerraformTasks.yml
-  secrets: .taskfiles/SecretTasks.yaml
 
 tasks:
   init:
@@ -98,7 +96,6 @@ tasks:
     desc: Configure repository from env settings
     cmds:
       - task: render-templates
-      - task: encrypt-secrets
       - task: download-cert-manager-crds
     sources:
       - config.yaml
@@ -137,56 +134,6 @@ tasks:
       - makejinja --input ./templates/ansible/playbooks/honcho.yml.j2 --output {{.ANSIBLE_DIR}}/playbooks
       - makejinja --input ./templates/ansible/roles/honcho/ --output {{.ANSIBLE_DIR}}/roles/honcho
       - echo "Honcho-related Ansible templates regenerated successfully"
-
-  encrypt-secrets:
-    cmds:
-      - for: { var: SECRET_FILES }
-        cmd: |
-          # Check if file is currently encrypted
-          if sops filestatus "{{.ITEM}}" | jq --exit-status ".encrypted" &>/dev/null; then
-            echo "Skipping {{.ITEM}} - already encrypted"
-          else
-            # File is plaintext - check if we have a backup to compare against
-            BACKUP_FILE="{{.ITEM}}.encrypted.bak"
-            CHECKSUM_FILE="{{.ITEM}}.checksum"
-
-            if [ -f "$BACKUP_FILE" ] && [ -f "$CHECKSUM_FILE" ]; then
-              # Compare checksum of current plaintext with stored checksum
-              CURRENT_CHECKSUM=$(sha256sum "{{.ITEM}}" | awk '{print $1}')
-              STORED_CHECKSUM=$(cat "$CHECKSUM_FILE")
-
-              if [ "$CURRENT_CHECKSUM" = "$STORED_CHECKSUM" ]; then
-                echo "Restoring {{.ITEM}} from backup - content unchanged"
-                cp "$BACKUP_FILE" "{{.ITEM}}"
-              else
-                echo "Encrypting {{.ITEM}} - content changed"
-                sops --encrypt --in-place "{{.ITEM}}"
-                cp "{{.ITEM}}" "$BACKUP_FILE"
-                echo "$CURRENT_CHECKSUM" > "$CHECKSUM_FILE"
-              fi
-            else
-              echo "Encrypting {{.ITEM}} - first time"
-              CURRENT_CHECKSUM=$(sha256sum "{{.ITEM}}" | awk '{print $1}')
-              sops --encrypt --in-place "{{.ITEM}}"
-              cp "{{.ITEM}}" "$BACKUP_FILE"
-              echo "$CURRENT_CHECKSUM" > "$CHECKSUM_FILE"
-            fi
-          fi
-
-  # encrypt-secrets:
-  #   cmds:
-  #     - for: { var: SECRET_FILES }
-  #       cmd: |
-  #         if sops filestatus "{{.ITEM}}" | jq --exit-status ".encrypted == false" &>/dev/null; then
-  #               sops --encrypt --in-place "{{.ITEM}}"
-  #         fi
-    vars:
-      SECRET_FILES:
-        sh: find "{{.ANSIBLE_DIR}}" "{{.TERRAFORM_DIR}}" "{{.KUBERNETES_DIR}}" -type f -name "*.sops.*" ! -name "*.encrypted.bak" ! -name "*.checksum" -print
-    preconditions:
-      - test -f {{.SOPS_AGE_KEY_FILE}}
-      - test -f {{.ROOT_DIR}}/.sops.yaml
-      - which jq sops
 
   download-cert-manager-crds:
     desc: Download cert-manager CRDs for configured version
@@ -247,18 +194,8 @@ tasks:
         msg: "proxmox_lxc_template_name must be the final Proxmox template volume, not a temporary .tmp download path"
       - sh: yq eval '.proxmox_lxc_template_name' config.yaml | grep -q ':vztmpl/'
         msg: "proxmox_lxc_template_name must look like <storage>:vztmpl/<template-file>.tar.zst"
-      - sh: test "$(yq eval '.proxmox_api_token_secret' config.yaml)" != "REPLACE_ME"
-        msg: "Set proxmox_api_token_secret in config.yaml"
-      - sh: test "$(yq eval '.proxmox_lxc_template_name' config.yaml)" != "REPLACE_ME"
-        msg: "Set proxmox_lxc_template_name in config.yaml"
-      - sh: test "$(yq eval '.proxmox_lxc_initial_password' config.yaml)" != "REPLACE_ME"
-        msg: "Set proxmox_lxc_initial_password in config.yaml"
       - sh: test "$(yq eval '.unifi_api_url' config.yaml)" != "REPLACE_ME"
         msg: "Set unifi_api_url in config.yaml"
-      - sh: test "$(yq eval '.unifi_username' config.yaml)" != "REPLACE_ME"
-        msg: "Set unifi_username in config.yaml"
-      - sh: test "$(yq eval '.unifi_password' config.yaml)" != "REPLACE_ME"
-        msg: "Set unifi_password in config.yaml"
 
   deploy-honcho:
     desc: Render config, provision the Honcho host, and configure Honcho, PostgreSQL, and Redis
@@ -279,18 +216,8 @@ tasks:
         msg: "proxmox_lxc_template_name must be the final Proxmox template volume, not a temporary .tmp download path"
       - sh: yq eval '.proxmox_lxc_template_name' config.yaml | grep -q ':vztmpl/'
         msg: "proxmox_lxc_template_name must look like <storage>:vztmpl/<template-file>.tar.zst"
-      - sh: test "$(yq eval '.proxmox_api_token_secret' config.yaml)" != "REPLACE_ME"
-        msg: "Set proxmox_api_token_secret in config.yaml"
-      - sh: test "$(yq eval '.proxmox_lxc_template_name' config.yaml)" != "REPLACE_ME"
-        msg: "Set proxmox_lxc_template_name in config.yaml"
-      - sh: test "$(yq eval '.proxmox_lxc_initial_password' config.yaml)" != "REPLACE_ME"
-        msg: "Set proxmox_lxc_initial_password in config.yaml"
       - sh: test "$(yq eval '.unifi_api_url' config.yaml)" != "REPLACE_ME"
         msg: "Set unifi_api_url in config.yaml"
-      - sh: test "$(yq eval '.unifi_username' config.yaml)" != "REPLACE_ME"
-        msg: "Set unifi_username in config.yaml"
-      - sh: test "$(yq eval '.unifi_password' config.yaml)" != "REPLACE_ME"
-        msg: "Set unifi_password in config.yaml"
 
   deploy-infisical-data:
     desc: Deploy the Infisical data host and create K8s bootstrap secrets
@@ -324,16 +251,8 @@ tasks:
         msg: "proxmox_lxc_template_name must be the final Proxmox template volume, not a temporary .tmp download path"
       - sh: yq eval '.proxmox_lxc_template_name' config.yaml | grep -q ':vztmpl/'
         msg: "proxmox_lxc_template_name must look like <storage>:vztmpl/<template-file>.tar.zst"
-      - sh: test "$(yq eval '.proxmox_api_token_secret' config.yaml)" != "REPLACE_ME"
-        msg: "Set proxmox_api_token_secret in config.yaml"
-      - sh: test "$(yq eval '.proxmox_lxc_initial_password' config.yaml)" != "REPLACE_ME"
-        msg: "Set proxmox_lxc_initial_password in config.yaml"
       - sh: test "$(yq eval '.unifi_api_url' config.yaml)" != "REPLACE_ME"
         msg: "Set unifi_api_url in config.yaml"
-      - sh: test "$(yq eval '.unifi_username' config.yaml)" != "REPLACE_ME"
-        msg: "Set unifi_username in config.yaml"
-      - sh: test "$(yq eval '.unifi_password' config.yaml)" != "REPLACE_ME"
-        msg: "Set unifi_password in config.yaml"
 
   update-infisical-data:
     desc: Update the Infisical data host without reprovisioning it
