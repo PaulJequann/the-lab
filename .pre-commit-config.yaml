@@ -13,8 +13,10 @@ repos:
     hooks:
       - id: terraform-fmt
 
-  - repo: https://github.com/onedr0p/sops-pre-commit
-    rev: v2.1.0
+  - repo: local
     hooks:
-      - id: forbid-secrets
-        exclude: ^tmpl/(.*).yaml
+      - id: infisical-scan
+        name: infisical scan git-changes
+        entry: infisical scan git-changes --staged --verbose
+        language: system
+        pass_filenames: false
