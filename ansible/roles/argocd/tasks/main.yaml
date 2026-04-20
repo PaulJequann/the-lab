@@ -18,6 +18,42 @@
     - name: Expose ArgoCD admin password hash
       ansible.builtin.set_fact:
         argocd_admin_password_hash: "{{ _argocd_infisical_secrets.admin_password_hash }}"
+        argocd_server_secretkey: "{{ _argocd_infisical_secrets.server_secretkey }}"
+      no_log: true
+
+    - name: Ensure ArgoCD namespace exists
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ argocd_namespace }}"
+
+    # Planted before helm install so argocd-server can boot on a fresh
+    # cluster. The in-repo chart sets configs.secret.create=false and an
+    # InfisicalSecret owns argocd-secret on every subsequent reconcile.
+    # helm.sh/resource-policy=keep and the infisical-operator managed-by
+    # label keep this Secret alive across Helm upgrades and ArgoCD syncs.
+    - name: Plant initial argocd-secret from Infisical
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: argocd-secret
+            namespace: "{{ argocd_namespace }}"
+            labels:
+              app.kubernetes.io/managed-by: infisical-operator
+              app.kubernetes.io/part-of: argocd
+              app.kubernetes.io/name: argocd-secret
+            annotations:
+              helm.sh/resource-policy: keep
+          type: Opaque
+          stringData:
+            admin.password: "{{ argocd_admin_password_hash }}"
+            server.secretkey: "{{ argocd_server_secretkey }}"
       no_log: true
 
     - name: Add Argo Helm repository
@@ -55,20 +91,6 @@
         values: "{{ lookup('template', 'argocd-helm-values.yaml.j2') | from_yaml }}"
       when: argocd_install_needed | bool
       no_log: true
-    
-    - name: Create age key secret for helm-secrets
-      when: lookup('env', 'SOPS_AGE_KEY_FILE') | length > 0
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: "{{ helm_secrets_age_key_secret_name }}"
-            namespace: "{{ helm_secrets_age_key_secret_namespace }}"
-          type: Opaque
-          data:
-            key.txt: "{{ lookup('file', lookup('env', 'SOPS_AGE_KEY_FILE')) | b64encode }}"
     
     - name: Wait for ArgoCD server to be ready
       ansible.builtin.k8s_info:

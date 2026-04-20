@@ -1,0 +1,9 @@
+apiVersion: v2
+name: argocd-wrapper
+description: Helm wrapper for argo-cd with local configuration
+type: application
+version: 1.0.0
+dependencies:
+  - name: argo-cd
+    version: "{{ argocd_chart_version }}"
+    repository: "{{ argocd_chart_repo }}"

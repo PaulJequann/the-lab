@@ -163,8 +163,3 @@
         state: absent
       when: temp_helm_dir.path is defined
 
-- name: Install Helm Secrets plugin
-  kubernetes.core.helm_plugin:
-    plugin_path: https://github.com/jkroepke/helm-secrets
-    state: present
-  when: inventory_hostname == groups['controllers'][0]

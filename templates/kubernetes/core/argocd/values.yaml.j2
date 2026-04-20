@@ -1,0 +1,41 @@
+# Values for argo-cd Helm wrapper.
+# All argo-cd chart values must be nested under the 'argo-cd' key.
+# argocd-secret is intentionally NOT owned by this chart — an InfisicalSecret
+# in templates/argocd.infisicalsecret.yaml materializes it from Infisical.
+argo-cd:
+  global:
+    domain: {{ argocd_domain }}
+  configs:
+    cm:
+      create: true
+      admin.enabled: true
+      application.instanceLabelKey: app.kubernetes.io/instance
+      resource.exclusions: |
+        - apiGroups:
+            - ""
+          kinds:
+            - Secret
+          clusters:
+            - "*"
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: infisical-operator
+    params:
+      create: true
+      server.insecure: {{ (argocd_insecure | default(false)) | tojson }}
+    secret:
+      create: false
+  server:
+    service:
+      type: ClusterIP
+  repoServer:
+    serviceAccount:
+      create: true
+      name: argocd-repo-server
+    rbac:
+      - apiGroups:
+          - ""
+        resources:
+          - secrets
+        verbs:
+          - get
