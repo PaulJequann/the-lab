@@ -112,9 +112,9 @@ tasks:
       - "{{.KUBERNETES_DIR}}/**/*"
     cmds:
       - echo "Regenerating templates (sources changed)..."
-      - makejinja --input ./templates/ansible/ --output {{.ANSIBLE_DIR}}
-      - makejinja --input ./templates/terraform/ --output {{.TERRAFORM_DIR}}/
-      - makejinja --input ./templates/kubernetes/ --output {{.KUBERNETES_DIR}}
+      - python3 scripts/render.py --input ./templates/ansible --output {{.ANSIBLE_DIR}}
+      - python3 scripts/render.py --input ./templates/terraform --output {{.TERRAFORM_DIR}}
+      - python3 scripts/render.py --input ./templates/kubernetes --output {{.KUBERNETES_DIR}}
       - echo "Templates regenerated successfully"
 
   render-honcho-ansible:
@@ -130,9 +130,9 @@ tasks:
       - "{{.ANSIBLE_DIR}}/roles/honcho/**/*"
     cmds:
       - echo "Regenerating Honcho-related Ansible templates..."
-      - makejinja --input ./templates/ansible/group_vars/services.yaml.j2 --output {{.ANSIBLE_DIR}}/group_vars
-      - makejinja --input ./templates/ansible/playbooks/honcho.yml.j2 --output {{.ANSIBLE_DIR}}/playbooks
-      - makejinja --input ./templates/ansible/roles/honcho/ --output {{.ANSIBLE_DIR}}/roles/honcho
+      - python3 scripts/render.py --input ./templates/ansible/group_vars/services.yaml.j2 --output {{.ANSIBLE_DIR}}/group_vars
+      - python3 scripts/render.py --input ./templates/ansible/playbooks/honcho.yml.j2 --output {{.ANSIBLE_DIR}}/playbooks
+      - python3 scripts/render.py --input ./templates/ansible/roles/honcho --output {{.ANSIBLE_DIR}}/roles/honcho
       - echo "Honcho-related Ansible templates regenerated successfully"
 
   download-cert-manager-crds:

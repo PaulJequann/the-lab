@@ -21,6 +21,8 @@ PACKAGES=(
   openssh
   pre-commit
   prettier
+  python-jinja
+  python-yaml
   rbw
   stern
   terraform
@@ -39,12 +41,6 @@ require_cachyos_or_arch() {
 install_system_packages() {
   echo "Installing host packages with pacman..."
   sudo pacman -S --needed "${PACKAGES[@]}"
-}
-
-install_makejinja_tool() {
-  echo "Installing makejinja with uv..."
-  uv tool install --force --with bcrypt --with attrs --with pyyaml makejinja
-  uv tool update-shell || true
 }
 
 create_ansible_venv() {
@@ -116,7 +112,7 @@ Next steps:
   4. Verify the toolchain:
        which yq
        yq --version
-       which makejinja
+       python3 -c 'import jinja2, yaml; print(jinja2.__version__, yaml.__version__)'
        which ansible
        ansible --version
        helm plugin list
@@ -124,14 +120,13 @@ Next steps:
 Expected:
   - yq --version reports Mike Farah yq v4
   - ansible resolves to ${ANSIBLE_VENV}/bin/ansible
-  - makejinja resolves from uv's tool directory
+  - python3 imports jinja2 and yaml without error
 EOF
 }
 
 main() {
   require_cachyos_or_arch
   install_system_packages
-  install_makejinja_tool
   create_ansible_venv
   install_ansible_galaxy_content
   install_helm_diff_plugin

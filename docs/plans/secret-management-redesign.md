@@ -1506,9 +1506,9 @@ Current known Terraform secret-bearing inputs:
 - Remove SOPS provider configuration from every `providers.tf`.
 - Remove any temporary `*.auto.tfvars` secret inputs that have been replaced by Infisical lookups or ephemeral resources.
 
-### A.12 Phase A Cleanup
+### A.12 Phase A Cleanup ✅ (A.12.1–A.12.5 complete; A.12.6 open)
 
-**Execution scope for this session: A.12.1–A.12.5 only.** The DR runbook and A.13 trust-chain heartbeat are deferred to a follow-up session. Phase A is not considered closed until those land, but the destructive refactor in A.12 is independently valuable and ships first.
+**Execution scope for this session: A.12.1–A.12.5 only.** Completed 2026-04-20 across commits `cd2d3e7` (A.12.1), `a8b4cd5` (A.12.2), `61cf131` (A.12.3), `f076f75` (A.12.4), `9b87c6b` (A.12.5). The DR runbook and A.13 trust-chain heartbeat remain deferred. Phase A is not considered closed until those land, but the destructive refactor in A.12 is independently valuable and shipped first.
 
 **Commit granularity:** one commit per sub-phase (A.12.1, A.12.2, A.12.3, A.12.4, A.12.5). Between commits: `git push`, wait for the affected ArgoCD `Application` resources to report `Healthy`, run the smoke checks listed under each sub-phase. Do not start the next sub-phase until the previous one is green in-cluster. If a sub-phase fails, revert that commit rather than chaining fixes on top.
 
@@ -1523,7 +1523,7 @@ Current known Terraform secret-bearing inputs:
 
 **Bitwarden naming convention for new argocd-related DR material:** `homelab/bootstrap/argocd-admin-password-hash` (already present, planted in A.5) and `homelab/bootstrap/argocd-server-secretkey` (new, planted during A.12.1 pre-flight). Matches the existing flat `homelab/bootstrap/*` convention for every Infisical seed value.
 
-#### A.12.1 ArgoCD helm-secrets Teardown
+#### A.12.1 ArgoCD helm-secrets Teardown ✅
 
 The ArgoCD deployment has deep helm-secrets integration. This sub-phase refactors `kubernetes/core/argo-cd/` into a full Helm chart (mirroring the cert-manager / glitchtip pattern from A.9) so ArgoCD self-manages via a vendored chart dependency plus an `InfisicalSecret` that owns `argocd-secret`.
 
@@ -1636,7 +1636,7 @@ Document these pre-flight commands in the A.12.1 commit message body so they are
 - `https://argocd.local.bysliek.com/` UI login works with the existing admin password
 - All other ArgoCD Applications remain `Healthy`
 
-#### A.12.2 Sealed Secrets Removal
+#### A.12.2 Sealed Secrets Removal ✅
 
 **Hard gate already cleared** (see "Pre-execution state verified" above — no SealedSecret CRs in the cluster, all four replacement Secrets live). Execute the deletions below directly.
 
@@ -1657,7 +1657,7 @@ Document these pre-flight commands in the A.12.1 commit message body so they are
 - All four InfisicalSecret-backed workloads (cert-manager, deeptutor, glitchtip, infisical-canary) remain `Healthy`
 - `kubectl get application -n argocd` shows no `OutOfSync` apps
 
-#### A.12.3 SOPS/Age Removal + Deterministic Template Rendering
+#### A.12.3 SOPS/Age Removal + Deterministic Template Rendering ✅
 
 **File deletions:**
 
@@ -1704,7 +1704,7 @@ Keep all non-secret configuration: node inventory, network CIDRs, chart versions
 - `grep -rn "SOPS_AGE\|sops_age\|helm-secrets\|helm_secrets\|sealed_secrets\|kubeseal\|bcrypt_password\|seal_secret\|build_helm_secrets_path" --include="*.{yaml,yml,j2,py,sh,toml,md}" .` returns zero matches outside `docs/plans/`
 - All ArgoCD Applications remain `Healthy`
 
-#### A.12.4 Peripheral Sweep
+#### A.12.4 Peripheral Sweep ✅
 
 **Legacy bash scripts (delete):**
 
@@ -1748,7 +1748,7 @@ Any residual match is either legitimate (e.g., historical mention in `docs/plans
 - The devcontainer builds without the kubeseal install block (no curl-to-GitHub-releases step)
 - All ArgoCD Applications remain `Healthy`
 
-#### A.12.5 Replace `sops-pre-commit` with `infisical scan`
+#### A.12.5 Replace `sops-pre-commit` with `infisical scan` ✅
 
 Once SOPS is removed from the repo (A.12.3), the existing `onedr0p/sops-pre-commit` `forbid-secrets` hook in `.pre-commit-config.yaml` becomes stale — it is a SOPS-specific check that assumes encrypted files are the norm. With no SOPS in the pipeline, the repo needs a replacement guardrail against accidentally committing plaintext secrets.
 
@@ -1777,25 +1777,27 @@ Once SOPS is removed from the repo (A.12.3), the existing `onedr0p/sops-pre-comm
 
 **Why this belongs in Phase A cleanup:** the migration from SOPS to Infisical removes encryption-at-rest as a safety net. Without a replacement guardrail, a stray paste of a plaintext secret into a template or tfvars file commits clean — the pre-commit hook is the only thing catching it before it hits Git history.
 
-#### A.12.6 Evaluate makejinja Replacement (Deferred)
+#### A.12.6 Replace makejinja with `scripts/render.py` ✅
 
-After the secret-path plugin functions are removed, the remaining rendering surface is straightforward Jinja2 + YAML. `makejinja` is a niche Python tool with a small user base that requires `pipx`, Python, and injected dependencies (`bcrypt`, `attrs`, `pyyaml`). This creates operational friction — `task configure` cannot run on the host workstation without the devcontainer or a manual `pipx install` chain.
+Shipped 2026-04-20. `makejinja` is replaced with a ~75-line stdlib-adjacent Python script (`scripts/render.py`) using stock `jinja2` + `pyyaml`. Output is byte-identical to the previous `makejinja` rendering across all 86 templates (verified against a snapshot of the rendered `ansible/`, `terraform/`, `kubernetes/` trees before the swap).
 
-Evaluate replacing `makejinja` with a more portable alternative:
+**What changed:**
 
-- A minimal Python script (the actual rendering logic is ~50 lines)
-- A standalone CLI like `j2cli` or `jinja2-cli`
-- A vendored Go binary for zero-dependency rendering
+- `scripts/render.py` — new renderer. `StrictUndefined`, `trim_blocks=True`, `lstrip_blocks=True`, `keep_trailing_newline=True` to match the prior `makejinja` whitespace semantics exactly. Skips any path containing a `_macros/` segment. Supports both directory and single-file `--input` (honcho re-render uses the single-file form).
+- `Taskfile.yml` — `render-templates` and `render-honcho-ansible` now call `python3 scripts/render.py …` instead of `makejinja …`.
+- Deleted `makejinja/plugin.py` and `makejinja.toml` outright. The only custom plugin filter (`urlencode`) had zero live callers post-A.12.3; the other three (`bcrypt_password`, `seal_secret`, `build_helm_secrets_path`) were already stripped in A.12.3.
+- `scripts/bootstrap-host-cachyos.sh` — dropped the `uv tool install makejinja` block, added `python-jinja` and `python-yaml` to the pacman package list.
+- `docs/host-setup.md` — replaced the `makejinja` install section with `python-jinja` / `python-yaml` package notes; updated verification commands to `python3 -c 'import jinja2, yaml'`.
+- `.devcontainer/postCreateCommand.sh` — replaced the `pipx install makejinja` / `pipx inject` block with `pip install --upgrade jinja2 pyyaml`.
 
-The goal is to preserve the `config.yaml` + `task configure` pattern (centralized non-secret config rendered across Kubernetes, Ansible, and Terraform) while removing the niche tooling dependency. The pattern is valuable; the tool is the liability.
+**Why not a Go binary / `j2cli` / `jinja2-cli`:** Go's closest Jinja2 lib is `pongo2`, which is Django-flavored — filters like `to_json` / `tojson` and inline ternaries diverge, forcing a template audit. The other CLIs are `pipx`-installed just like makejinja — same operational friction, no win. Stock `jinja2` + `pyyaml` are available from every distro package manager directly.
 
-**What survives Phase A:**
+**Verify after A.12.6:**
 
-- `config.yaml` (non-secret variables only)
-- `makejinja` (renders non-secret templates, minus `bcrypt_password`, `seal_secret`, and `build_helm_secrets_path`) — candidate for replacement in A.12.5
-- `task configure` (non-secret rendering only)
-
-Nothing from the old SOPS or Age toolchain is functional after Phase A.
+- `task configure --force` produces byte-identical output to the prior `makejinja` baseline (validated via directory snapshot + `diff -rq`)
+- Re-running `task configure` a second time is a no-op and leaves `git status` clean for rendered dirs
+- `pre-commit run --all-files` passes on the A.12.6 changeset
+- No `makejinja` references remain outside `docs/plans/secret-management-redesign.md`
 
 ### A.13 Trust Chain Heartbeat
 
@@ -1976,14 +1978,14 @@ This runbook does not need to be fully rehearsal-tested before the migration sta
 10. **A.9:** Migrate K8s secrets via in-app `InfisicalSecret` CRDs using the standard secret-readiness gate (`PreSync` wait Job): cert-manager → glitchtip → deeptutor (ArgoCD secrets handled separately in A.10)
 11. **A.10:** ✅ Migrate Ansible secrets (includes ArgoCD bootstrap-path secret migration via Infisical lookups) — completed 2026-04-19
 12. **A.11:** ✅ Migrate Terraform secrets across all known repo-managed secret-bearing inputs (ephemeral resources where possible; explicitly defer any exceptions) — completed 2026-04-19; 2/5 roots smoke-tested clean against live cluster, 3/5 blocked at `terraform init` by stale TFC token (operator action: `terraform login app.terraform.io`)
-13. **A.12.1:** ArgoCD helm-secrets teardown (env vars, init container, Age key volume, wrapper script, and k3s Helm Secrets plugin install)
-14. **A.12.2:** Sealed Secrets removal (controller, CRD whitelist, ApplicationSet ignore rule, sourceRepos, cert, plugin function)
-15. **A.12.3:** SOPS/Age removal and `task configure` rewrite for non-secret-only Phase A behavior
-16. **A.12.4:** Final cleanup sweep
-17. **A.12.5:** Replace `sops-pre-commit` `forbid-secrets` hook with `infisical scan git-changes` in `.pre-commit-config.yaml`
+13. **A.12.1:** ✅ ArgoCD helm-secrets teardown (env vars, init container, Age key volume, wrapper script, and k3s Helm Secrets plugin install) — completed 2026-04-20 (`cd2d3e7`)
+14. **A.12.2:** ✅ Sealed Secrets removal (controller, CRD whitelist, ApplicationSet ignore rule, sourceRepos, cert, plugin function) — completed 2026-04-20 (`a8b4cd5`)
+15. **A.12.3:** ✅ SOPS/Age removal and `task configure` rewrite for non-secret-only Phase A behavior — completed 2026-04-20 (`61cf131`)
+16. **A.12.4:** ✅ Final cleanup sweep — completed 2026-04-20 (`f076f75`)
+17. **A.12.5:** ✅ Replace `sops-pre-commit` `forbid-secrets` hook with `infisical scan git-changes` in `.pre-commit-config.yaml` — completed 2026-04-20 (`9b87c6b`)
 18. **DR runbook:** Write the documented recovery checklist before calling Phase A complete
 19. **A.13:** Deploy the trust chain heartbeat script and schedule (daily CronJob or workstation timer), verify all 6 legs pass green, configure GlitchTip alerting on failure
-20. **Deferred follow-up (A.12.6):** Evaluate replacing `makejinja` with a more portable renderer after the secret-path plugin functions are removed
+20. **A.12.6:** ✅ Replaced `makejinja` with `scripts/render.py` (stock `jinja2` + `pyyaml`) — completed 2026-04-20. Byte-identical output vs. the prior `makejinja` baseline.
 21. **Deferred follow-up:** Revisit deeptutor with the new secret-management patterns in hand and decide whether to redesign/upgrade it after the current secret migration has already removed its dependence on Sealed Secrets
 Each phase is independently valuable, but Phase A is not complete until SOPS and Age are gone from this repo and the trust chain heartbeat is running green.
 

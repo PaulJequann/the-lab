@@ -45,22 +45,8 @@ fi
 # =====================
 # Python Package Management
 # =====================
-echo "Installing Python packages..."
-
-# Verify pipx is installed
-if ! command -v pipx &> /dev/null; then
-    echo "Error: pipx not found. Please install pipx first."
-    exit 1
-fi
-
-# Install packages with idempotency checks
-if ! pipx list | grep -q "package makejinja"; then
-    echo "Installing makejinja..."
-    pipx install makejinja
-    pipx inject makejinja bcrypt attrs pyyaml
-else
-    echo "makejinja already installed"
-fi
+echo "Installing Python packages for scripts/render.py..."
+pip install --quiet --upgrade jinja2 pyyaml
 
 # =====================
 # Ansible Collections
