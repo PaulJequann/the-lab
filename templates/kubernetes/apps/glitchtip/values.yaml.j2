@@ -54,9 +54,12 @@ glitchtip:
     maintenanceDatabase:
       existingSecret: glitchtip-secrets
       existingSecretKey: MAINTENANCE_DATABASE_URL
-    # In-cluster Valkey — the chart creates its own Secret with REDIS_URL
-    # and injects it via the valkey.env helper. No existingSecret needed.
-    valkey: {}
+    # In-cluster Valkey — REDIS_URL points at the chart-provisioned Valkey
+    # service (redis://glitchtip-valkey:6379/0). Managed via InfisicalSecret
+    # so the URL is DR-safe and tracked in git.
+    valkey:
+      existingSecret: glitchtip-secrets
+      existingSecretKey: REDIS_URL
 
   # Chart's migrate Job annotates itself helm.sh/hook: post-install,pre-upgrade
   # which ArgoCD expands to PreSync+PostSync. The PreSync arm runs before the
