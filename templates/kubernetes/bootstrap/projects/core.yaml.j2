@@ -17,3 +17,8 @@ spec:
   clusterResourceWhitelist:
     - group: '*'
       kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+    - group: secrets.infisical.com
+      kind: InfisicalSecret

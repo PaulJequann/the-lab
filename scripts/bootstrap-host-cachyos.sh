@@ -8,23 +8,20 @@ ANSIBLE_VENV="${HOME}/.venvs/the-lab"
 ANSIBLE_BIN_DIR="${ANSIBLE_VENV}/bin"
 HELM_DIFF_REPO="https://github.com/databus23/helm-diff"
 PACKAGES=(
-  age
   argocd
   cloudflared
-  fluxcd
   git
   go-task
   go-yq
   helm
+  infisical-cli
   jq
   kubectl
-  kubeseal
   kustomize
   openssh
   pre-commit
   prettier
   rbw
-  sops
   stern
   terraform
   tflint
@@ -90,7 +87,6 @@ report_local_state() {
 
   local path
   for path in \
-    "${HOME}/.config/sops/age/keys.txt" \
     "${HOME}/.ssh" \
     "${HOME}/.kube" \
     "${HOME}/.terraform.d/credentials.tfrc.json" \

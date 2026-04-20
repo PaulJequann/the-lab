@@ -15,13 +15,12 @@ After completing this setup, the host should be able to run:
 - `task configure`
 - `source scripts/load-bootstrap-secrets.sh ...`
 - `ansible`, `ansible-playbook`, and `ansible-galaxy` from the repo venv
-- Terraform, kubectl, Helm, Flux, SOPS, and related operator workflows
+- Terraform, kubectl, Helm, and related operator workflows
 
 ## Required Local State
 
 These files and directories must already exist on the workstation:
 
-- `~/.config/sops/age/keys.txt`
 - `~/.ssh/`
 - `~/.kube/`
 - `~/.terraform.d/credentials.tfrc.json`
@@ -54,8 +53,8 @@ Install the host packages:
 
 ```bash
 sudo pacman -S --needed \
-  age argocd cloudflared fluxcd git go-task go-yq helm jq kubectl \
-  kubeseal kustomize openssh pre-commit prettier rbw sops stern \
+  argocd cloudflared git go-task go-yq helm infisical-cli jq kubectl \
+  kustomize openssh pre-commit prettier rbw stern \
   terraform tflint yamllint uv
 ```
 
@@ -116,7 +115,7 @@ yq --version
 which makejinja
 which ansible
 ansible --version
-ansible-galaxy collection list | rg 'kubernetes.core|community.sops|community.postgresql'
+ansible-galaxy collection list | rg 'kubernetes.core|community.postgresql|infisical.vault'
 makejinja --version
 helm plugin list
 RBW_PROFILE=bootstrap rbw unlocked && echo unlocked || echo locked
