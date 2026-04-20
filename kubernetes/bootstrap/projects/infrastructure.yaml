@@ -10,7 +10,6 @@ spec:
     - https://github.com/PaulJequann/the-lab
     - https://argoproj.github.io/argo-helm
     - https://charts.jetstack.io
-    - https://bitnami-labs.github.io/sealed-secrets
     - https://helm.cilium.io
     - https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
     - oci://helm.oci.cloudsmith.io/infisical/helm-charts

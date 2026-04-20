@@ -10,7 +10,6 @@ spec:
     - https://github.com/PaulJequann/the-lab
     - https://argoproj.github.io/argo-helm
     - https://charts.jetstack.io
-    - https://bitnami-labs.github.io/sealed-secrets
     - https://helm.cilium.io
   destinations:
     - namespace: '*'
