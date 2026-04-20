@@ -86,6 +86,12 @@ tasks:
     desc: Run local regression tests
     cmds:
       - bash tests/load-bootstrap-secrets-test.sh
+      - bash tests/fast-local-storage-test.sh
+
+  migrate-fast-local-pvc:
+    desc: Cold-copy app data from NFS PVCs to staged fast-local PVCs
+    cmds:
+      - bash scripts/migrate-fast-local-pvc.sh {{.CLI_ARGS}}
 
   # configure:
   #   desc: Configure repository from env settings

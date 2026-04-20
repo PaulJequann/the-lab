@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ sonarr_fast_local_claim_name }}
+  namespace: {{ media_namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ fast_local_storage_class_name }}
+  resources:
+    requests:
+      storage: {{ sonarr_storage_size }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ radarr_fast_local_claim_name }}
+  namespace: {{ media_namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ fast_local_storage_class_name }}
+  resources:
+    requests:
+      storage: {{ radarr_storage_size }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ overseerr_fast_local_claim_name }}
+  namespace: {{ media_namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ fast_local_storage_class_name }}
+  resources:
+    requests:
+      storage: {{ overseerr_storage_size }}

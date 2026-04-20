@@ -56,9 +56,13 @@
     config:
       enabled: true
       type: persistentVolumeClaim
+{% if homeassistant_fast_local_enabled %}
+      existingClaim: {{ homeassistant_fast_local_claim_name }}
+{% else %}
       storageClass: nfs-csi
       accessMode: ReadWriteOnce
       size: {{homeassistant_storage_size}}
+{% endif %}
       globalMounts:
         - path: /config
     dbus:
