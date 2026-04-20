@@ -50,9 +50,32 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
+  ignoreDifferences:
+    # cilium-config data is mutated by the Cilium operator at runtime
+    # (cluster identity, BPF feature toggles, etc.)
+    - group: ""
+      kind: ConfigMap
+      name: cilium-config
+      namespace: kube-system
+      jsonPointers:
+        - /data
+    # cilium-ingress Service is decorated by kube-vip (annotations/labels)
+    # and the Service controller (nodePort, loadBalancerIP)
+    - group: ""
+      kind: Service
+      name: cilium-ingress
+      namespace: kube-system
+      jqPathExpressions:
+        - '.metadata.annotations["kube-vip.io/loadbalancerIPs"]'
+        - '.metadata.annotations["kube-vip.io/vipHost"]'
+        - '.metadata.labels.implementation'
+        - '.spec.loadBalancerIP'
+        - '.spec.allocateLoadBalancerNodePorts'
+        - '.spec.ports[].nodePort'
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - RespectIgnoreDifferences=true
