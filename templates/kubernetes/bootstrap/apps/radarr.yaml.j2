@@ -4,12 +4,12 @@ kind: Application
 metadata:
   name: radarr
   namespace: {{argocd_namespace | default('argocd')}}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   destination:
     namespace: {{media_namespace}}
     server: https://kubernetes.default.svc
-    finalizers:
-      - resources-finalizer.argocd.argoproj.io
   project: apps
   source:
     chart: {{helmchart_template_name}}
