@@ -9,7 +9,6 @@
       - postgresql
       - postgresql-client
       - python3-psycopg2
-      - redis-server
     state: present
 
 - name: Ensure PostgreSQL backup mount point exists
@@ -142,46 +141,28 @@
     loop_var: managed_database
   become_user: postgres
 
-- name: Configure Redis bind address
-  ansible.builtin.lineinfile:
-    path: /etc/redis/redis.conf
-    regexp: '^bind '
-    line: "bind {{ glitchtip_redis_bind }}"
-  notify: Restart redis
+# Redis was removed in favor of in-cluster Valkey (see kubernetes/apps/glitchtip/values.yaml).
+# The Ansible role no longer manages a Redis instance on this host.
 
-- name: Configure Redis port
-  ansible.builtin.lineinfile:
-    path: /etc/redis/redis.conf
-    regexp: '^port '
-    line: "port {{ glitchtip_redis_port }}"
-  notify: Restart redis
+- name: Remove obsolete Redis packages
+  block:
+    - name: Stop Redis service
+      ansible.builtin.systemd:
+        name: redis-server
+        state: stopped
+        enabled: false
+      ignore_errors: true
 
-- name: Enforce Redis protected mode
-  ansible.builtin.lineinfile:
-    path: /etc/redis/redis.conf
-    regexp: '^protected-mode '
-    line: 'protected-mode yes'
-  notify: Restart redis
+    - name: Remove redis-server package
+      ansible.builtin.apt:
+        name: redis-server
+        state: absent
+        purge: true
 
-- name: Enable Redis appendonly persistence
-  ansible.builtin.lineinfile:
-    path: /etc/redis/redis.conf
-    regexp: '^appendonly '
-    line: "appendonly {{ glitchtip_redis_appendonly }}"
-  notify: Restart redis
-
-- name: Configure Redis password
-  ansible.builtin.lineinfile:
-    path: /etc/redis/redis.conf
-    regexp: '^#?requirepass '
-    line: "requirepass {{ glitchtip_redis_password }}"
-  notify: Restart redis
-
-- name: Ensure Redis service is enabled and started
-  ansible.builtin.systemd:
-    name: redis-server
-    enabled: true
-    state: started
+    - name: Remove Redis config directory
+      ansible.builtin.file:
+        path: /etc/redis
+        state: absent
 
 - name: Install PostgreSQL backup script
   ansible.builtin.template:

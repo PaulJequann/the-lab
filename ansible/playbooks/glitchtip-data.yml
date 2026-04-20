@@ -16,7 +16,6 @@
     - name: Expose GlitchTip secrets as role variables
       ansible.builtin.set_fact:
         glitchtip_postgres_password: "{{ _glitchtip_infisical.POSTGRES_PASSWORD }}"
-        glitchtip_redis_password: "{{ _glitchtip_infisical.REDIS_PASSWORD }}"
         glitchtip_postgres_additional_databases: []
       no_log: true
 
