@@ -1,40 +1,44 @@
+variable "infisical_client_id" {
+  description = "Infisical universal auth client_id (TF_VAR_infisical_client_id)"
+  type        = string
+  sensitive   = true
+}
+
+variable "infisical_client_secret" {
+  description = "Infisical universal auth client_secret (TF_VAR_infisical_client_secret)"
+  type        = string
+  sensitive   = true
+}
+
+variable "infisical_project_id" {
+  description = "Infisical project UUID (workspace_id for ephemeral resources)"
+  type        = string
+  default     = "{{ infisical_project_id }}"
+}
+
 variable "pm_api_url" {
-  type = string
-}
-
-variable "pm_api_token_id" {
   type    = string
-  default = ""
-}
-
-variable "pm_api_token_secret" {
-  type = string
+  default = "{{ proxmox_api_url }}"
 }
 
 variable "ssh_key_file" {
-  default = "~/.ssh/id_ed25519.pub"
+  type    = string
+  default = "{{ proxmox_ssh_key_file }}"
 }
 
 variable "template_name" {
-  type = string
+  type    = string
+  default = "{{ proxmox_lxc_template_name }}"
 }
 
 variable "cipassword" {
-  description = "Initial root password for the LXC guest"
+  description = "Cloud-init password (TF_VAR_cipassword, fed by load-bootstrap-secrets.sh terraform)"
   type        = string
-}
-
-variable "unifi_username" {
-  description = "username for the unifi controller"
-  type        = string
-}
-
-variable "unifi_password" {
-  description = "password for the unifi controller"
-  type        = string
+  sensitive   = true
 }
 
 variable "unifi_api_url" {
   description = "url for the unifi controller"
   type        = string
+  default     = "{{ unifi_api_url }}"
 }

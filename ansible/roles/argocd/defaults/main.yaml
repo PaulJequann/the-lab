@@ -1,0 +1,10 @@
+---
+# Non-secret ArgoCD role defaults rendered from config.yaml.
+# The admin password hash is fetched at runtime from Infisical
+# (/kubernetes/argocd/admin_password_hash) — see tasks/main.yaml.
+argocd_domain: argocd.local.bysliek.com
+argocd_chart_version: 8.1.2
+argocd_namespace: argocd
+argocd_insecure: False
+helm_secrets_age_key_secret_name: helm-secrets-private-keys
+helm_secrets_age_key_secret_namespace: argocd

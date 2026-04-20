@@ -3,3 +3,9 @@ ansible_python_interpreter: /usr/bin/python3
 ansible_user: ansible
 bootstrap_admin_user: "pj"
 control_plane_endpoint: 10.0.10.50
+# Infisical connection parameters used by infisical.vault lookups across roles.
+# Values rendered from config.yaml; credentials (INFISICAL_CLIENT_ID/SECRET)
+# come from scripts/load-bootstrap-secrets.sh ansible.
+infisical_project_id: 914ba6ac-d254-403c-9f38-d2e3adf702b8
+infisical_env_slug: prod
+infisical_domain: infisical.local.bysliek.com

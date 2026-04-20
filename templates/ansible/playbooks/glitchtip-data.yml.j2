@@ -8,9 +8,17 @@
       ansible.builtin.include_vars:
         file: "{% raw %}{{ playbook_dir }}{% endraw %}/../group_vars/services.yaml"
 
-    - name: Load encrypted service variables
-      community.sops.load_vars:
-        file: "{% raw %}{{ playbook_dir }}{% endraw %}/../group_vars/services.sops.yaml"
+    - name: Fetch GlitchTip cross-scope secrets from Infisical
+      ansible.builtin.set_fact:
+        _glitchtip_infisical: "{% raw %}{{ lookup('infisical.vault.read_secrets', as_dict=True, universal_auth_client_id=lookup('env', 'INFISICAL_CLIENT_ID'), universal_auth_client_secret=lookup('env', 'INFISICAL_CLIENT_SECRET'), project_id=infisical_project_id, path='/kubernetes/glitchtip', env_slug=infisical_env_slug, url='https://' + infisical_domain) }}{% endraw %}"
+      no_log: true
+
+    - name: Expose GlitchTip secrets as role variables
+      ansible.builtin.set_fact:
+        glitchtip_postgres_password: "{% raw %}{{ _glitchtip_infisical.POSTGRES_PASSWORD }}{% endraw %}"
+        glitchtip_redis_password: "{% raw %}{{ _glitchtip_infisical.REDIS_PASSWORD }}{% endraw %}"
+        glitchtip_postgres_additional_databases: []
+      no_log: true
 
   roles:
     - glitchtip_data

@@ -2,9 +2,23 @@
 - name: Install Cloudflare
   when: inventory_hostname == groups['controllers'][0]
   block:
-    - name: Load Cloudflare variables
-      community.sops.load_vars:
-        file: "{{ role_path }}/files/cloudflare-tunnel.sops.json"
+    - name: Fetch Cloudflare tunnel credentials from Infisical
+      ansible.builtin.set_fact:
+        _cloudflare_infisical: >-
+          {{ lookup('infisical.vault.read_secrets',
+            as_dict=True,
+            universal_auth_client_id=lookup('env', 'INFISICAL_CLIENT_ID'),
+            universal_auth_client_secret=lookup('env', 'INFISICAL_CLIENT_SECRET'),
+            project_id=infisical_project_id,
+            path='/ansible/cloudflare',
+            env_slug=infisical_env_slug,
+            url='https://' + infisical_domain) }}
+      no_log: true
+
+    - name: Parse Cloudflare tunnel JSON blob
+      ansible.builtin.set_fact:
+        _cloudflare_tunnel: "{{ _cloudflare_infisical.tunnel_json | from_json }}"
+      no_log: true
 
     - name: Create Cloudflare namespace
       ansible.builtin.k8s:
@@ -35,10 +49,11 @@
               app.kubernetes.io/part-of: cloudflare
           type: Opaque
           stringData:
-            account-tag: "{{ AccountTag }}"
-            tunnel-secret: "{{ TunnelSecret }}"
-            tunnel-id: "{{ TunnelID }}"
-            tunnel-endpoint: "{{ Endpoint }}"
+            account-tag: "{{ _cloudflare_tunnel.AccountTag }}"
+            tunnel-secret: "{{ _cloudflare_tunnel.TunnelSecret }}"
+            tunnel-id: "{{ _cloudflare_tunnel.TunnelID }}"
+            tunnel-endpoint: "{{ _cloudflare_tunnel.Endpoint }}"
+      no_log: true
 
     - name: Add Cloudflare helm repo
       kubernetes.core.helm_repository:
@@ -46,7 +61,7 @@
         repo_url: https://cloudflare.github.io/helm-charts
       register: add_repo_result
       changed_when: add_repo_result.rc == 0
-    
+
     - name: Install Cloudflare helm chart
       kubernetes.core.helm:
         name: cloudflare
@@ -56,15 +71,16 @@
         values:
           cloudflare:
             tunnelName: "{{ cloudflare_tunnel_name }}"
-            tunnelId: "{{ TunnelID }}"
-            secret: "{{ TunnelSecret }}"
+            tunnelId: "{{ _cloudflare_tunnel.TunnelID }}"
+            secret: "{{ _cloudflare_tunnel.TunnelSecret }}"
             ingress:
               - hostname: "tunnel.{{ cloudflare_domain }}"
                 service: http://web-service:80
-              
+
               - hostname: "hello.{{ cloudflare_domain }}"
                 service: hello_world
           resources:
             limits:
               cpu: 500m
               memory: 128Mi
+      no_log: true

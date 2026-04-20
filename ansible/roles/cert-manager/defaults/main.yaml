@@ -1,0 +1,8 @@
+---
+# Non-secret cert-manager role defaults rendered from config.yaml.
+# The cloudflare-api-token Secret in the cert-manager namespace is owned by
+# the InfisicalSecret CRD (kubernetes/core/cert-manager/, migrated in A.9);
+# this role no longer creates it.
+cert_manager_namespace: "cert-manager"
+cert_manager_cloudflare_api_secret_name: "cloudflare-api-token"
+cert_manager_cloudflare_api_secret_key: "cloudflare-api-token"

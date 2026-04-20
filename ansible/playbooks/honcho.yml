@@ -8,9 +8,27 @@
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../group_vars/services.yaml"
 
-    - name: Load encrypted service variables
-      community.sops.load_vars:
-        file: "{{ playbook_dir }}/../group_vars/services.sops.yaml"
+    - name: Fetch Honcho secrets from Infisical
+      ansible.builtin.set_fact:
+        _services_infisical: "{{ lookup('infisical.vault.read_secrets', as_dict=True, universal_auth_client_id=lookup('env', 'INFISICAL_CLIENT_ID'), universal_auth_client_secret=lookup('env', 'INFISICAL_CLIENT_SECRET'), project_id=infisical_project_id, path='/ansible/services', env_slug=infisical_env_slug, url='https://' + infisical_domain) }}"
+      no_log: true
+
+    - name: Expose Honcho secrets as role variables
+      ansible.builtin.set_fact:
+        honcho_postgres_password: "{{ _services_infisical.honcho_postgres_password }}"
+        honcho_redis_password: "{{ _services_infisical.honcho_redis_password }}"
+        honcho_auth_jwt_secret: "{{ _services_infisical.honcho_auth_jwt_secret }}"
+        honcho_webhook_secret: "{{ _services_infisical.honcho_webhook_secret }}"
+        honcho_llm_anthropic_api_key: "{{ _services_infisical.honcho_llm_anthropic_api_key }}"
+        honcho_llm_openai_api_key: "{{ _services_infisical.honcho_llm_openai_api_key }}"
+        honcho_llm_gemini_api_key: "{{ _services_infisical.honcho_llm_gemini_api_key }}"
+        honcho_llm_groq_api_key: "{{ _services_infisical.honcho_llm_groq_api_key }}"
+        honcho_sentry_dsn: "{{ _services_infisical.honcho_sentry_dsn | default('') }}"
+        # Optional / nullable keys — skipped at migration per A.5; fallback to empty.
+        honcho_llm_openai_compatible_api_key: "{{ _services_infisical.honcho_llm_openai_compatible_api_key | default('') }}"
+        honcho_llm_vllm_api_key: "{{ _services_infisical.honcho_llm_vllm_api_key | default('') }}"
+        honcho_vector_store_turbopuffer_api_key: "{{ _services_infisical.honcho_vector_store_turbopuffer_api_key | default('') }}"
+      no_log: true
 
   roles:
     - honcho

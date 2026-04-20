@@ -4,8 +4,7 @@ collections:
     version: 6.5.0
   - name: community.postgresql
     version: 4.2.0
-  - name: community.sops
-    version: 1.6.1
+  - name: infisical.vault
   - name: ansible.posix
     version: 1.5.2
   - name: ansible.utils

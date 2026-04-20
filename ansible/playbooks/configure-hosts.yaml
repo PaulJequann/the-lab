@@ -5,9 +5,18 @@
   gather_facts: false
 
   pre_tasks:
-    - name: Load encrypted bootstrap variables
-      community.sops.load_vars:
-        file: "{{ playbook_dir }}/../inventory/group_vars/all.sops.yaml"
+    - name: Read bootstrap cipassword from environment
+      ansible.builtin.set_fact:
+        cipassword: "{{ lookup('env', 'ANSIBLE_CIPASSWORD') }}"
+      no_log: true
+
+    - name: Validate cipassword is present
+      ansible.builtin.assert:
+        that:
+          - cipassword | length > 0
+        fail_msg: >-
+          ANSIBLE_CIPASSWORD env var is required. Source it via
+          `source scripts/load-bootstrap-secrets.sh ansible` before running.
 
     - name: Check known_hosts for SSH target
       ansible.builtin.shell: >-

@@ -1,9 +1,8 @@
-pm_api_url          = "{{ proxmox_api_url }}"
-pm_api_token_id     = "{{ proxmox_api_token_id }}"
-pm_api_token_secret = "{{ proxmox_api_token_secret }}"
-ssh_key_file        = "{{ proxmox_ssh_key_file }}"
-template_name       = "{{ proxmox_lxc_template_name }}"
-cipassword          = "{{ proxmox_lxc_initial_password }}"
-unifi_username      = "{{ unifi_username }}"
-unifi_password      = "{{ unifi_password }}"
-unifi_api_url       = "{{ unifi_api_url }}"
+# Non-secret shape only. Secrets (pm_api_token_*, cipassword, unifi creds,
+# infisical_client_id/secret) flow from TF_VAR_* env vars exported by
+# scripts/load-bootstrap-secrets.sh terraform, or from ephemeral Infisical
+# resources in provider.tf.
+pm_api_url    = "{{ proxmox_api_url }}"
+ssh_key_file  = "{{ proxmox_ssh_key_file }}"
+template_name = "{{ proxmox_lxc_template_name }}"
+unifi_api_url = "{{ unifi_api_url }}"

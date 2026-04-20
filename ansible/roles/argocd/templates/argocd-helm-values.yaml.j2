@@ -14,7 +14,7 @@ configs:
     server.insecure: "{{ argocd_insecure | default(false) }}"
   secret:
     create: true
-    argocdServerAdminPassword: "{{ argocd_admin_password }}"
+    argocdServerAdminPassword: "{{ argocd_admin_password_hash }}"
 server:
   service:
     type: ClusterIP

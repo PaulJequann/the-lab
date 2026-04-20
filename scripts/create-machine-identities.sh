@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision the three machine identities described in plan §A.7:
 #   1. Kubernetes Operator Identity   (K8s Auth)        — read /kubernetes/*
-#   2. Ansible Identity                (Universal Auth)  — read /ansible/*, /kubernetes/argocd/*
+#   2. Ansible Identity                (Universal Auth)  — read /ansible/*, /kubernetes/argocd/*, /kubernetes/glitchtip/*
 #   3. Terraform Identity              (Universal Auth)  — read /terraform/*, /ansible/proxmox/*
 #
 # Idempotent: re-running is safe. Existing identities are reused; auth
@@ -340,7 +340,7 @@ _log "[2/3] Ansible Identity (Universal Auth)"
 ANS_ID="$(_create_identity "ansible")"
 _attach_to_project "$ANS_ID"
 ANS_CLIENT_ID="$(_attach_universal_auth "$ANS_ID")"
-_grant_read_paths "$ANS_ID" "/ansible/**" "/kubernetes/argocd/**"
+_grant_read_paths "$ANS_ID" "/ansible/**" "/kubernetes/argocd/**" "/kubernetes/glitchtip/**"
 ANS_SEC="$(_get_or_create_client_secret "$ANS_ID")"
 ANS_SID="${ANS_SEC%%:*}"; ANS_SVAL="${ANS_SEC#*:}"
 _rbw_set "homelab/bootstrap/infisical-ansible-client-id" "$ANS_CLIENT_ID"

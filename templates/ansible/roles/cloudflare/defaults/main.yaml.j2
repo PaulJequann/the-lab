@@ -1,0 +1,6 @@
+---
+# Non-secret Cloudflare role defaults rendered from config.yaml.
+# The tunnel credentials (AccountTag, TunnelSecret, TunnelID, Endpoint) are
+# fetched at runtime from Infisical as a single JSON blob — see tasks/main.yaml.
+cloudflare_domain: {{ cloudflare_domain }}
+cloudflare_tunnel_name: {{ cloudflare_tunnel_name }}

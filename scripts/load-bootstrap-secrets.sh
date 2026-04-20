@@ -9,7 +9,9 @@
 #   source scripts/load-bootstrap-secrets.sh [group...]
 #
 # Groups:
-#   terraform   - Proxmox and UniFi credentials (TF_VAR_* env vars)
+#   terraform   - Proxmox and UniFi credentials + Terraform machine identity
+#                 (TF_VAR_* env vars, including TF_VAR_infisical_client_id/secret)
+#   ansible     - Ansible machine identity (INFISICAL_CLIENT_ID/SECRET env vars)
 #   infisical   - Infisical application secrets (INFISICAL_* env vars)
 #   all         - All groups
 #
@@ -17,6 +19,7 @@
 #   source scripts/load-bootstrap-secrets.sh
 #   source scripts/load-bootstrap-secrets.sh all
 #   source scripts/load-bootstrap-secrets.sh terraform infisical
+#   source scripts/load-bootstrap-secrets.sh ansible
 #   source scripts/load-bootstrap-secrets.sh infisical
 #
 # Prerequisites:
@@ -52,7 +55,18 @@ _bootstrap_load_terraform() {
   _bootstrap_require_secret TF_VAR_cipassword homelab/bootstrap/proxmox-cipassword || return 1
   _bootstrap_require_secret TF_VAR_unifi_username homelab/bootstrap/unifi-username || return 1
   _bootstrap_require_secret TF_VAR_unifi_password homelab/bootstrap/unifi-password || return 1
-  echo "  [terraform] TF_VAR_pm_api_token_id, TF_VAR_pm_api_token_secret, TF_VAR_cipassword, TF_VAR_unifi_username, TF_VAR_unifi_password"
+  _bootstrap_require_secret TF_VAR_infisical_client_id homelab/bootstrap/infisical-terraform-client-id || return 1
+  _bootstrap_require_secret TF_VAR_infisical_client_secret homelab/bootstrap/infisical-terraform-client-secret || return 1
+  echo "  [terraform] TF_VAR_pm_api_token_id, TF_VAR_pm_api_token_secret, TF_VAR_cipassword, TF_VAR_unifi_username, TF_VAR_unifi_password, TF_VAR_infisical_client_id, TF_VAR_infisical_client_secret"
+  echo "  [terraform] NOTE: terraform/unifi also needs TF_VAR_iot_wlan_passphrase."
+  echo "             Export manually before running that root (stored at /terraform/unifi/iot_wlan_passphrase in Infisical)."
+}
+
+_bootstrap_load_ansible() {
+  _bootstrap_require_secret INFISICAL_CLIENT_ID homelab/bootstrap/infisical-ansible-client-id || return 1
+  _bootstrap_require_secret INFISICAL_CLIENT_SECRET homelab/bootstrap/infisical-ansible-client-secret || return 1
+  _bootstrap_require_secret ANSIBLE_CIPASSWORD homelab/bootstrap/proxmox-cipassword || return 1
+  echo "  [ansible] INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET, ANSIBLE_CIPASSWORD"
 }
 
 _bootstrap_load_infisical() {
@@ -93,16 +107,20 @@ for group in "$@"; do
     terraform)
       _bootstrap_load_terraform || return 1 2>/dev/null || exit 1
       ;;
+    ansible)
+      _bootstrap_load_ansible || return 1 2>/dev/null || exit 1
+      ;;
     infisical)
       _bootstrap_load_infisical || return 1 2>/dev/null || exit 1
       ;;
     all)
       _bootstrap_load_terraform || return 1 2>/dev/null || exit 1
+      _bootstrap_load_ansible || return 1 2>/dev/null || exit 1
       _bootstrap_load_infisical || return 1 2>/dev/null || exit 1
       ;;
     *)
       echo "Unknown group: $group" >&2
-      echo "Available groups: terraform, infisical, all" >&2
+      echo "Available groups: terraform, ansible, infisical, all" >&2
       _bootstrap_fail "invalid bootstrap secret group."
       return 1 2>/dev/null || exit 1
       ;;

@@ -2,9 +2,23 @@
 - name: Install ArgoCD
   when: inventory_hostname == groups['controllers'][0]
   block:
-    - name: Load encrypted variables
-      community.sops.load_vars:
-        file: "{{ role_path }}/defaults/main.sops.yaml"
+    - name: Fetch ArgoCD secrets from Infisical
+      ansible.builtin.set_fact:
+        _argocd_infisical_secrets: >-
+          {{ lookup('infisical.vault.read_secrets',
+            as_dict=True,
+            universal_auth_client_id=lookup('env', 'INFISICAL_CLIENT_ID'),
+            universal_auth_client_secret=lookup('env', 'INFISICAL_CLIENT_SECRET'),
+            project_id=infisical_project_id,
+            path='/kubernetes/argocd',
+            env_slug=infisical_env_slug,
+            url='https://' + infisical_domain) }}
+      no_log: true
+
+    - name: Expose ArgoCD admin password hash
+      ansible.builtin.set_fact:
+        argocd_admin_password_hash: "{{ _argocd_infisical_secrets.admin_password_hash }}"
+      no_log: true
 
     - name: Add Argo Helm repository
       kubernetes.core.helm_repository:
@@ -40,6 +54,7 @@
         create_namespace: true
         values: "{{ lookup('template', 'argocd-helm-values.yaml.j2') | from_yaml }}"
       when: argocd_install_needed | bool
+      no_log: true
     
     - name: Create age key secret for helm-secrets
       when: lookup('env', 'SOPS_AGE_KEY_FILE') | length > 0

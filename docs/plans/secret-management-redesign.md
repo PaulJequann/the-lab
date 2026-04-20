@@ -1299,7 +1299,39 @@ Use `kubectl get secret -A` and the app-specific readiness checks to confirm the
 - Remove secret variables from `config.yaml`
 - Add InfisicalSecret CRD manifest (static YAML, no template)
 
-### A.10 Migrate Ansible Secrets
+### A.10 Migrate Ansible Secrets ✅
+
+**Status:** ✅ Complete — executed 2026-04-19. Every `.sops.yaml` / `.sops.json` artifact under `ansible/` and its `templates/ansible/` j2 sources was deleted. ArgoCD, cloudflare, and cert-manager roles + the honcho / glitchtip-data / configure-hosts playbooks now read secrets via `infisical.vault.read_secrets` lookups (or `ANSIBLE_CIPASSWORD` env var for the bootstrap-tier cipassword). `community.sops` removed from `ansible/requirements.yml`; `infisical.vault` 1.2.1 + `infisicalsdk` 1.0.16 installed.
+
+**Files deleted (16 total):**
+
+- `ansible/{group_vars,inventory/group_vars}/{services,all}.sops.yaml{,.checksum,.encrypted.bak}`
+- `ansible/roles/{argocd,cert-manager,cloudflare}/defaults/main.sops.yaml{,.checksum,.encrypted.bak}`
+- `ansible/roles/cloudflare/files/cloudflare-tunnel.sops.json`
+- `ansible/roles/cert-manager/templates/cert_manager_cloudflare_secret.yaml.j2` (redundant — A.9's InfisicalSecret CRD owns the cloudflare-api-token Secret)
+- `templates/ansible/{group_vars,inventory/group_vars,roles/argocd/defaults,roles/cert-manager/defaults,roles/cloudflare/defaults}/*.sops.yaml.j2`
+
+**Files added:**
+
+- `ansible/roles/{argocd,cert-manager,cloudflare}/defaults/main.yaml` (plain, rendered from new `templates/.../main.yaml.j2` from `config.yaml`)
+- `ansible/inventory/group_vars/all.yaml` extended with `infisical_project_id` / `infisical_env_slug` / `infisical_domain` for use by every role's lookup
+- `config.yaml` adds `infisical_project_id` (UUID `914ba6ac-d254-403c-9f38-d2e3adf702b8` for the `the-lab` project, queried from Infisical UI / `/api/v1/workspace`)
+
+**Loader / identity changes:**
+
+- `scripts/load-bootstrap-secrets.sh` adds an `ansible` group (`INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, `ANSIBLE_CIPASSWORD` from Bitwarden)
+- `scripts/create-machine-identities.sh` Ansible identity grants extended to include `/kubernetes/glitchtip/**` (cross-scope read for the `glitchtip_data` role's POSTGRES_PASSWORD / REDIS_PASSWORD pulls — gap not covered by the original A.7 grant set)
+
+**Gotchas surfaced during execution (captured here so DR replays don't relearn them):**
+
+1. **`infisical.vault.read_secrets` requires `project_id` (UUID), not `project_slug`.** The K8s operator CRDs accept `projectSlug` but the Ansible lookup does not. Added `infisical_project_id` to `config.yaml` as the canonical home; rendered into `ansible/inventory/group_vars/all.yaml` so every play picks it up automatically. The UUID is queryable via `curl -k -H "Authorization: Bearer $ADMIN_TOKEN" https://infisical.local.bysliek.com/api/v1/workspace | jq -r '.workspaces[] | select(.slug == "the-lab-kjtq") | .id'`.
+2. **makejinja whitespace stripping mangles multi-line `{% raw %}` blocks.** First attempt at the playbook templates wrapped a multi-line `lookup(...)` call in `{% raw %}…{% endraw %}` across newlines; lstrip_blocks/trim_blocks stripped both the leading indent of the first content line and the newline before `no_log: true`, producing invalid YAML where the folded scalar bled into adjacent keys. Fix: keep `{% raw %}…{% endraw %}` on a **single line** even if the lookup expression gets long.
+3. **Ansible identity needed cross-scope `/kubernetes/glitchtip/**`.** A.5 inventory row 914 lists the glitchtip_data role as a cross-scope reader of `POSTGRES_PASSWORD`/`REDIS_PASSWORD`, but A.7's identity-creation script only granted `/ansible/**` and `/kubernetes/argocd/**`. Caught while wiring the playbook lookup; added `/kubernetes/glitchtip/**` to the `_grant_read_paths "$ANS_ID" …` call. Operators must re-run `scripts/create-machine-identities.sh` after pulling these changes.
+4. **`cipassword` cannot live in Infisical for bootstrap-day-zero hosts.** `configure-hosts.yaml` runs against the infisical-data host before Infisical itself exists. Solution: pull `cipassword` from `ANSIBLE_CIPASSWORD` env var (Bitwarden-backed via the new `ansible` group in the loader). Same dual-storage pattern as `infisical_postgres_password` in `infisical-data.yml`.
+5. **Cloudflare tunnel JSON is stored as a single Infisical value, parsed at runtime.** Stored at `/ansible/cloudflare/tunnel_json` as a single string containing the full JSON document; the role pipes it through `| from_json` into a fact, then references `_cloudflare_tunnel.AccountTag` etc. Avoids splitting four sub-keys across separate Infisical entries while keeping the operator's mental model identical to the original `cloudflare-tunnel.sops.json`.
+6. **cert-manager role lost its cloudflare-secret task.** A.9's InfisicalSecret CRD now creates the `cloudflare-api-token` Secret in the cert-manager namespace; the Ansible task was redundant after A.9 shipped. Role retains only the namespace-create task (idempotent safety net).
+7. **helm-secrets vars are CONFIG, not SECRET.** `helm_secrets_age_key_secret_name` / `helm_secrets_age_key_secret_namespace` were sitting in the ArgoCD sops file but contain only a Secret name + namespace string — no actual key material. Moved to the plain rendered `defaults/main.yaml`. They survive A.10 untouched and get deleted entirely in A.12.1 (helm-secrets teardown).
+8. **ArgoCD admin password var renamed.** Original template referenced `argocd_admin_password`; the Infisical key is `admin_password_hash` (precomputed bcrypt hash per A.4.7 decision 8). Renamed the role variable to `argocd_admin_password_hash` end-to-end (`argocd-helm-values.yaml.j2` now reads `argocdServerAdminPassword: "{{ argocd_admin_password_hash }}"`).
 
 **Install:**
 
@@ -1381,7 +1413,31 @@ The cert-manager ClusterIssuer template at `templates/kubernetes/core/cert-manag
 - Delete corresponding `.j2` templates
 - Remove SOPS-related Ansible configuration
 
-### A.11 Migrate Terraform Secrets
+### A.11 Migrate Terraform Secrets ✅
+
+**Status:** ✅ Complete — executed 2026-04-19. Infisical provider + ephemeral resources wired into `terraform/{unifi,kubernetes-nodes,proxmox-nodes,glitchtip-data,honcho}/`. All plaintext secrets removed from the corresponding `terraform.tfvars` / `*.auto.tfvars` files (and their j2 templates). `terraform/cloudflare/` (orphan SOPS-only dir) deleted; `terraform/kubernetes-nodes/terraform.tfvars` (byte-identical dup of unifi's) deleted. `terraform/infisical-data/` left untouched per the bootstrap-root rule.
+
+**Smoke tests (live cluster):**
+
+- `terraform -chdir=terraform/honcho plan` → ✅ ephemeral lookups against `/ansible/proxmox/*` (cross-scope) + `/terraform/unifi/*` (direct) opened cleanly, providers consumed them, real Proxmox LXC + Unifi DHCP reservation refreshed, **No changes**
+- `terraform -chdir=terraform/glitchtip-data plan` → ✅ identical clean run
+- `unifi`, `kubernetes-nodes`, `proxmox-nodes`: blocked at `terraform init` by stale `app.terraform.io` token (`unauthorized` reading `pauljequann` org). Pre-existing TFC backend issue, **not A.11-induced** — fires before any provider config is parsed. Operator runs `terraform login app.terraform.io`, then plan is identical to the two validated roots (same providers.tf pattern).
+
+**Loader changes:**
+
+- `_bootstrap_load_terraform()` now also exports `TF_VAR_infisical_client_id` / `TF_VAR_infisical_client_secret` from Bitwarden (`homelab/bootstrap/infisical-terraform-client-{id,secret}`).
+- For unifi runs: operator must additionally export `TF_VAR_iot_wlan_passphrase` manually before `plan` (see gotcha 2 below).
+
+**Side-fix:** `terraform/unifi/main.tf` `required_version` relaxed from `~> 1.10.1` (excluded TF 1.14.x) to `~> 1.10`.
+
+**Gotchas surfaced during execution:**
+
+1. **Infisical Terraform provider auth uses a nested `auth = { universal = { … } }` block**, not flat `client_id`/`client_secret` provider args. Pattern locked in across all five roots' `provider.tf` files.
+2. **Ephemeral resources can flow into provider config but NOT into resource args** unless the provider exposes a write-only attribute (`<attr>_wo` + version sentinel). `paultyng/unifi` v0.41.0 has no `passphrase_wo` for `unifi_wlan`, so `iot_wlan_passphrase` stays as a regular `var.iot_wlan_passphrase` fed via `TF_VAR_iot_wlan_passphrase` env var. State already contained the passphrase before A.11 (Terraform persists every resource arg), so no privacy regression — just no privacy improvement for that one value.
+3. **`workspace_id` in `ephemeral "infisical_secret"` blocks is the project UUID**, not the slug — same UUID as `infisical_project_id` in config.yaml. Confusing terminology in the Infisical provider docs (uses "project" and "workspace" interchangeably).
+4. **TF Cloud backend is independent of A.11.** Three of five roots (`unifi`, `kubernetes-nodes`, `proxmox-nodes`) use `cloud { organization = "pauljequann" }` for state. The unauthorized error fires before terraform parses `provider.tf`, so it is impossible to validate the Infisical pipeline against those roots without a fresh TFC login. The two local-backend roots (`honcho`, `glitchtip-data`) prove the pipeline; the other three are wired identically.
+5. **`required_version` constraints rot.** unifi's `~> 1.10.1` (set when 1.10.1 was current) silently broke as soon as the workstation's terraform was bumped past 1.10.x. Use the looser `~> 1.10` form going forward (pinned to the major-feature-shipping line that introduces ephemeral resources).
+6. **Cross-scope read for Terraform identity already covered `/ansible/proxmox/**`** from A.7's original grants — no script update needed for the proxmox-consuming roots, only for the Ansible identity (see A.10 gotcha 3).
 
 **Add provider:**
 
@@ -1742,8 +1798,8 @@ This runbook does not need to be fully rehearsal-tested before the migration sta
 8. **A.5:** ✅ Populate secrets in Infisical via `scripts/populate-infisical.sh` using the admin-identity token from A.4.5 and the audit-derived mapping (completed 2026-04-18: 35 written, 3 nullable skipped)
 9. **A.6-A.8:** Deploy Infisical Operator with label-based ArgoCD exclusion, create all three machine identities (K8s Auth + 2x Universal Auth), add required `InfisicalSecret` AppProject allowlists, store workstation credentials in Bitwarden, and validate the permanent canary
 10. **A.9:** Migrate K8s secrets via in-app `InfisicalSecret` CRDs using the standard secret-readiness gate (`PreSync` wait Job): cert-manager → glitchtip → deeptutor (ArgoCD secrets handled separately in A.10)
-11. **A.10:** Migrate Ansible secrets (includes ArgoCD bootstrap-path secret migration via Infisical lookups)
-12. **A.11:** Migrate Terraform secrets across all known repo-managed secret-bearing inputs (ephemeral resources where possible; explicitly defer any exceptions)
+11. **A.10:** ✅ Migrate Ansible secrets (includes ArgoCD bootstrap-path secret migration via Infisical lookups) — completed 2026-04-19
+12. **A.11:** ✅ Migrate Terraform secrets across all known repo-managed secret-bearing inputs (ephemeral resources where possible; explicitly defer any exceptions) — completed 2026-04-19; 2/5 roots smoke-tested clean against live cluster, 3/5 blocked at `terraform init` by stale TFC token (operator action: `terraform login app.terraform.io`)
 13. **A.12.1:** ArgoCD helm-secrets teardown (env vars, init container, Age key volume, wrapper script, and k3s Helm Secrets plugin install)
 14. **A.12.2:** Sealed Secrets removal (controller, CRD whitelist, ApplicationSet ignore rule, sourceRepos, cert, plugin function)
 15. **A.12.3:** SOPS/Age removal and `task configure` rewrite for non-secret-only Phase A behavior
