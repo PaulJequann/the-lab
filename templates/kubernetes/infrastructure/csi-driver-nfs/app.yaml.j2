@@ -1,8 +1,13 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: csi-driver-nfs
+  # Inner Helm Application (named *-helm to avoid colliding with the outer
+  # csi-driver-nfs Application that the cluster-apps ApplicationSet creates
+  # from this directory's basename).
+  name: csi-driver-nfs-helm
   namespace: {{ argocd_namespace | default('argocd') }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
 spec:
   destination:
     namespace: kube-system
@@ -13,6 +18,9 @@ spec:
     repoURL: https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
     targetRevision: {{ csi_driver_nfs_version | default('4.9.0') }}
     helm:
+      # Pin release name so existing live resources stay claimed across the
+      # rename (was named csi-driver-nfs before this restructure).
+      releaseName: csi-driver-nfs
       values: |
         externalSnapshotter:
           enabled: true
