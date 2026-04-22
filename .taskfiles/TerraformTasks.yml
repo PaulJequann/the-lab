@@ -44,6 +44,24 @@ tasks:
     cmds:
       - terraform apply {{.CLI_ARGS}}
 
+  init-unifi:
+    desc: Initialize terraform for the UniFi controller root
+    dir: "{{.TERRAFORM_DIR}}/unifi"
+    cmds:
+      - terraform init {{.CLI_ARGS}}
+
+  plan-unifi:
+    desc: Show the terraform plan for the UniFi controller root
+    dir: "{{.TERRAFORM_DIR}}/unifi"
+    cmds:
+      - terraform plan {{.CLI_ARGS}}
+
+  apply-unifi:
+    desc: Apply terraform for the UniFi controller root
+    dir: "{{.TERRAFORM_DIR}}/unifi"
+    cmds:
+      - terraform apply {{.CLI_ARGS}}
+
   init-glitchtip-data:
     desc: Initialize terraform for the GlitchTip data host
     dir: "{{.TERRAFORM_DIR}}/glitchtip-data"

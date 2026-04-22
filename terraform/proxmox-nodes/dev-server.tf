@@ -23,7 +23,7 @@ resource "proxmox_vm_qemu" "dev_server" {
   network {
     model  = "virtio"
     bridge = "vmbr0"
-    # tag    = data.terraform_remote_state.network.outputs.unifi_networks["lab-"].vlan_id
+    # tag    = <canonical UniFi network output once local cross-root wiring exists>
   }
 
   # cloud-init settings
@@ -31,6 +31,6 @@ resource "proxmox_vm_qemu" "dev_server" {
   ciuser     = var.ciuser
   cipassword = var.cipassword
   ipconfig0  = "ip=dhcp"
-  # ipconfig0 = "ip=${cidrhost(data.terraform_remote_state.network.outputs.unifi_networks["lab-internal"].subnet, 30 + count.index)}/24, gw=${cidrhost(data.terraform_remote_state.network.outputs.unifi_networks["lab-internal"].subnet, 1)}"
+  # ipconfig0 = "ip=<derived lab-internal address>/<cidr>, gw=<derived lab-internal gateway>"
   sshkeys = file("${var.ssh_key_file}")
 }

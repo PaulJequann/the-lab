@@ -21,7 +21,7 @@ resource "unifi_firewall_rule" "allow_established_related" {
   state_established = true
   state_related     = true
 
-  src_network_id = var.networks.iotings.id
+  src_network_id = unifi_network.networks["iotings"].id
   dst_network_id = var.default_network_id
 }
 
@@ -127,7 +127,6 @@ resource "unifi_firewall_rule" "allow_established_related" {
 #     unifi_firewall_group.RFC1918.id
 #   ]
 # }
-
 
 
 

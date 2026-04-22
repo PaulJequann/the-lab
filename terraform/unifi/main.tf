@@ -1,20 +1,6 @@
 terraform {
-  # backend "remote" {
-  # #   hostname     = "app.terraform.io"
-  # #   organization = "pauljequann"
-
-  # #   workspaces {
-  # #     prefix = "homelab-unifi"
-  # #   }
-  # # }
-    cloud {
-      organization = "pauljequann"
-
-      workspaces {
-        name = "homelab-unifi"
-      }
-    }
   required_version = "~> 1.10"
+
   required_providers {
     unifi = {
       source  = "paultyng/unifi"
@@ -26,5 +12,4 @@ terraform {
     }
   }
 }
-
 
