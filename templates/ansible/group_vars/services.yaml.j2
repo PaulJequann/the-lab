@@ -174,4 +174,18 @@ infisical_backup_enabled: {{ infisical.backup.enabled }}
 infisical_backup_nfs_server: {{ infisical.backup.nfs_server }}
 infisical_backup_nfs_path: {{ infisical.backup.nfs_path }}
 infisical_backup_retention_days: {{ infisical.backup.retention_days }}
+{% set services = terraform_service_lxcs['services-data'] %}
+# services-data host. Phase flags below control which consumer DBs are provisioned;
+# see docs/plans/services-data-consolidation.md for the full cutover sequence.
+services_data_hostname: {{ services.hostname }}
+services_data_ip: {{ services.ip }}
+services_data_postgres_version: {{ services.postgres.version }}
+services_data_postgres_port: {{ services.postgres.port }}
+services_data_redis_port: {{ services.redis.port }}
+services_data_backup_enabled: {{ services.backup.enabled }}
+services_data_backup_nfs_server: {{ services.backup.nfs_server }}
+services_data_backup_nfs_path: {{ services.backup.nfs_path }}
+services_data_backup_retention_days: {{ services.backup.retention_days }}
+services_data_enable_glitchtip_db: {{ services.enable_glitchtip_db }}
+services_data_enable_infisical_db: {{ services.enable_infisical_db }}
 node_network: {{ node_network }}

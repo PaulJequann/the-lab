@@ -173,4 +173,17 @@ infisical_backup_enabled: False
 infisical_backup_nfs_server: truenas.local.bysliek.com
 infisical_backup_nfs_path: /mnt/k8s-ssd-pool/infisical-postgres-backups
 infisical_backup_retention_days: 14
+# services-data host. Phase flags below control which consumer DBs are provisioned;
+# see docs/plans/services-data-consolidation.md for the full cutover sequence.
+services_data_hostname: services-data
+services_data_ip: 10.0.10.86
+services_data_postgres_version: 17
+services_data_postgres_port: 5432
+services_data_redis_port: 6379
+services_data_backup_enabled: False
+services_data_backup_nfs_server: truenas.local.bysliek.com
+services_data_backup_nfs_path: /mnt/k8s-ssd-pool/services-data-postgres-backups
+services_data_backup_retention_days: 14
+services_data_enable_glitchtip_db: True
+services_data_enable_infisical_db: False
 node_network: 10.0.10.0/24

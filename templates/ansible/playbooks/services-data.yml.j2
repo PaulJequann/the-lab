@@ -1,0 +1,64 @@
+---
+{% raw %}
+- name: Configure services-data host (PostgreSQL + Redis)
+  hosts: services-data
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Load service variables
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../group_vars/services.yaml"
+
+    # Glitchtip DB credentials come from Infisical at /kubernetes/glitchtip.
+    # Same lookup pattern as glitchtip-data.yml; Infisical is the source of
+    # truth for app-owned secrets that the app itself does not bootstrap.
+    - name: Fetch GlitchTip DB credentials from Infisical
+      ansible.builtin.set_fact:
+        _glitchtip_infisical: "{{ lookup('infisical.vault.read_secrets', as_dict=True, universal_auth_client_id=lookup('env', 'INFISICAL_CLIENT_ID'), universal_auth_client_secret=lookup('env', 'INFISICAL_CLIENT_SECRET'), project_id=infisical_project_id, path='/kubernetes/glitchtip', env_slug=infisical_env_slug, url='https://' + infisical_domain) }}"
+      no_log: true
+      when: services_data_enable_glitchtip_db | default(false) | bool
+
+    # Infisical's own DB/Redis passwords must never be sourced from Infisical
+    # (chicken-and-egg: this LXC hosts the DB/Redis that Infisical depends on).
+    # Both come from the bootstrap rbw profile via scripts/load-bootstrap-secrets.sh.
+    - name: Read Infisical + Redis bootstrap secrets from environment
+      ansible.builtin.set_fact:
+        _infisical_db_password: "{{ lookup('env', 'INFISICAL_DB_PASSWORD') }}"
+        services_data_redis_password: "{{ lookup('env', 'INFISICAL_REDIS_PASSWORD') }}"
+      no_log: true
+
+    - name: Validate required environment secrets are present
+      ansible.builtin.assert:
+        that:
+          - services_data_redis_password | length > 0
+        fail_msg: >-
+          INFISICAL_REDIS_PASSWORD is not set in the playbook environment.
+          Run: source scripts/load-bootstrap-secrets.sh all
+          (the 'infisical' group alone is enough if you've already loaded
+          the 'ansible' group in this shell).
+
+    - name: Compose managed PostgreSQL database list
+      ansible.builtin.set_fact:
+        services_data_postgres_databases: >-
+          {{
+            ([{
+              'name': 'glitchtip',
+              'user': 'glitchtip',
+              'password': _glitchtip_infisical.POSTGRES_PASSWORD | default(''),
+              'allowed_cidrs': [node_network],
+              'extensions': []
+            }] if services_data_enable_glitchtip_db | default(false) | bool else [])
+            +
+            ([{
+              'name': 'infisical',
+              'user': 'infisical',
+              'password': _infisical_db_password,
+              'allowed_cidrs': [node_network],
+              'extensions': []
+            }] if services_data_enable_infisical_db | default(false) | bool else [])
+          }}
+      no_log: true
+
+  roles:
+    - services_data
+{% endraw %}

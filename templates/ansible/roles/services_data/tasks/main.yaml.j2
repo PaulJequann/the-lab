@@ -1,0 +1,276 @@
+---
+{% raw %}
+- name: Install services-data base packages
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - acl
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - nfs-common
+      - python3-psycopg2
+    state: present
+
+- name: Install PGDG apt signing key
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/postgresql.asc
+    mode: '0644'
+
+- name: Enable PGDG apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql.asc] http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    filename: pgdg
+    state: present
+    update_cache: true
+
+- name: Install PostgreSQL {{ services_data_postgres_version }} from PGDG
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ services_data_postgres_version }}"
+      - "postgresql-client-{{ services_data_postgres_version }}"
+    state: present
+    update_cache: true
+
+- name: Discover installed PostgreSQL package version
+  ansible.builtin.command: >-
+    dpkg-query -W -f=${Version} postgresql-{{ services_data_postgres_version }}
+  register: services_data_postgres_pkg_version
+  changed_when: false
+
+- name: Assert PostgreSQL major version matches configured value
+  ansible.builtin.assert:
+    that:
+      - services_data_postgres_pkg_version.stdout is match('^' ~ (services_data_postgres_version | string) ~ '\\.')
+    fail_msg: >-
+      Installed postgresql-{{ services_data_postgres_version }} package version
+      '{{ services_data_postgres_pkg_version.stdout }}' does not start with
+      '{{ services_data_postgres_version }}.' — something installed a different
+      major version than configured. Refusing to proceed.
+
+- name: Set PostgreSQL config directory fact
+  ansible.builtin.set_fact:
+    services_data_postgres_config_dir: "/etc/postgresql/{{ services_data_postgres_version }}/main"
+
+- name: Validate managed PostgreSQL database definitions
+  ansible.builtin.assert:
+    that:
+      - managed_database.name is string
+      - managed_database.name | length > 0
+      - managed_database.user is string
+      - managed_database.user | length > 0
+      - managed_database.password is string
+      - managed_database.password | length > 0
+      - managed_database.allowed_cidrs is sequence
+      - managed_database.allowed_cidrs is not string
+      - managed_database.allowed_cidrs | length > 0
+      - (managed_database.extensions | default([])) is sequence
+      - (managed_database.extensions | default([])) is not string
+    fail_msg: >-
+      Each services_data_postgres_databases entry must include name, user,
+      password, at least one allowed_cidrs value, and an extensions list
+      (which may be empty).
+  loop: "{{ services_data_postgres_databases }}"
+  loop_control:
+    loop_var: managed_database
+    label: "{{ managed_database.name }}"
+  no_log: true
+
+- name: Collect unique extensions requested across managed databases
+  ansible.builtin.set_fact:
+    services_data_requested_extensions: >-
+      {{ services_data_postgres_databases
+         | map(attribute='extensions', default=[])
+         | map('list')
+         | sum(start=[])
+         | unique
+         | list }}
+
+- name: Fail on extensions missing from the extension -> package map
+  ansible.builtin.assert:
+    that:
+      - requested_extension in services_data_postgres_extension_packages
+    fail_msg: >-
+      Extension '{{ requested_extension }}' is not in
+      services_data_postgres_extension_packages. Add an explicit mapping
+      (use '' for contrib extensions that ship with postgresql-{{ services_data_postgres_version }}).
+  loop: "{{ services_data_requested_extensions }}"
+  loop_control:
+    loop_var: requested_extension
+
+- name: Build list of extension apt packages to install
+  ansible.builtin.set_fact:
+    services_data_extension_packages_to_install: >-
+      {{ services_data_requested_extensions
+         | map('extract', services_data_postgres_extension_packages)
+         | select('string')
+         | reject('equalto', '')
+         | unique
+         | list }}
+
+- name: Install PostgreSQL extension packages
+  ansible.builtin.apt:
+    name: "{{ services_data_extension_packages_to_install }}"
+    state: present
+  when: services_data_extension_packages_to_install | length > 0
+
+- name: Configure PostgreSQL listen addresses
+  ansible.builtin.lineinfile:
+    path: "{{ services_data_postgres_config_dir }}/postgresql.conf"
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '{{ services_data_postgres_listen_addresses }}'"
+  notify: Restart postgresql
+
+- name: Allow managed application CIDRs into PostgreSQL
+  ansible.builtin.blockinfile:
+    path: "{{ services_data_postgres_config_dir }}/pg_hba.conf"
+    marker: "# {mark} ANSIBLE MANAGED SERVICES_DATA"
+    block: |
+      {% for managed_database in services_data_postgres_databases %}
+      {% for allowed_cidr in managed_database.allowed_cidrs %}
+      host    {{ managed_database.name }}    {{ managed_database.user }}    {{ allowed_cidr }}    scram-sha-256
+      {% endfor %}
+      {% endfor %}
+  notify: Restart postgresql
+
+- name: Ensure PostgreSQL service is enabled and started
+  ansible.builtin.systemd:
+    name: "postgresql@{{ services_data_postgres_version }}-main"
+    enabled: true
+    state: started
+
+- name: Flush handlers so any pg config changes land before SQL tasks
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure managed PostgreSQL roles exist
+  community.postgresql.postgresql_user:
+    name: "{{ managed_database.user }}"
+    role_attr_flags: LOGIN
+    state: present
+    login_unix_socket: /var/run/postgresql
+  loop: "{{ services_data_postgres_databases }}"
+  loop_control:
+    loop_var: managed_database
+    label: "{{ managed_database.user }}"
+  become_user: postgres
+  no_log: true
+
+- name: Ensure managed PostgreSQL role passwords are current
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import os
+    import psycopg2
+    from psycopg2 import sql
+
+    conn = psycopg2.connect(dbname="postgres", user="postgres")
+    conn.autocommit = True
+
+    with conn, conn.cursor() as cur:
+        cur.execute(
+            sql.SQL("ALTER ROLE {} WITH LOGIN PASSWORD %s").format(
+                sql.Identifier(os.environ["SERVICES_DATA_PG_USER"])
+            ),
+            (os.environ["SERVICES_DATA_PG_PASSWORD"],),
+        )
+    PY
+  args:
+    executable: /bin/bash
+  environment:
+    SERVICES_DATA_PG_USER: "{{ managed_database.user }}"
+    SERVICES_DATA_PG_PASSWORD: "{{ managed_database.password }}"
+  loop: "{{ services_data_postgres_databases }}"
+  loop_control:
+    loop_var: managed_database
+    label: "{{ managed_database.user }}"
+  become_user: postgres
+  changed_when: false
+  no_log: true
+
+- name: Ensure managed PostgreSQL databases exist
+  community.postgresql.postgresql_db:
+    name: "{{ managed_database.name }}"
+    owner: "{{ managed_database.user }}"
+    encoding: "{{ services_data_postgres_db_encoding }}"
+    template: "{{ services_data_postgres_db_template }}"
+    lc_collate: "{{ services_data_postgres_db_lc_collate }}"
+    lc_ctype: "{{ services_data_postgres_db_lc_ctype }}"
+    state: present
+    login_unix_socket: /var/run/postgresql
+  loop: "{{ services_data_postgres_databases }}"
+  loop_control:
+    loop_var: managed_database
+    label: "{{ managed_database.name }}"
+  become_user: postgres
+
+- name: Enable requested PostgreSQL extensions per database
+  community.postgresql.postgresql_ext:
+    name: "{{ item.1 }}"
+    db: "{{ item.0.name }}"
+    state: present
+    login_unix_socket: /var/run/postgresql
+  loop: >-
+    {{ services_data_postgres_databases
+       | subelements('extensions', skip_missing=True) }}
+  loop_control:
+    label: "{{ item.0.name }}:{{ item.1 }}"
+  become_user: postgres
+
+- name: Install Redis 6.0.16 from Ubuntu apt
+  ansible.builtin.apt:
+    name: redis-server
+    state: present
+  when: services_data_redis_enabled | bool
+
+- name: Configure Redis bind address
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^bind '
+    line: "bind {{ services_data_redis_bind }}"
+  when: services_data_redis_enabled | bool
+  notify: Restart redis
+
+- name: Configure Redis port
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^port '
+    line: "port {{ services_data_redis_port }}"
+  when: services_data_redis_enabled | bool
+  notify: Restart redis
+
+- name: Enforce Redis protected mode
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^protected-mode '
+    line: 'protected-mode yes'
+  when: services_data_redis_enabled | bool
+  notify: Restart redis
+
+- name: Enable Redis appendonly persistence
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^appendonly '
+    line: "appendonly {{ services_data_redis_appendonly }}"
+  when: services_data_redis_enabled | bool
+  notify: Restart redis
+
+- name: Configure Redis password
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^#?requirepass '
+    line: "requirepass {{ services_data_redis_password }}"
+  when: services_data_redis_enabled | bool
+  notify: Restart redis
+  no_log: true
+
+- name: Ensure Redis service is enabled and started
+  ansible.builtin.systemd:
+    name: redis-server
+    enabled: true
+    state: started
+  when: services_data_redis_enabled | bool
+
+# Backup timer intentionally not wired up here. When the separate backups project
+# lands, add the template-install + systemd tasks guarded by
+# `services_data_backup_enabled | bool`.
+{% endraw %}

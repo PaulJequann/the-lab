@@ -1,0 +1,22 @@
+{% set svc = terraform_service_lxcs['services-data'] %}
+
+module "service_host" {
+  source = "../modules/proxmox-lxc-service"
+
+  target_node      = "{{ svc.target_node }}"
+  hostname         = "{{ svc.hostname }}"
+  ip_address       = "{{ svc.ip }}"
+  gateway          = "{{ svc.gateway }}"
+  storage          = "{{ svc.storage }}"
+  disk_size        = "{{ svc.disk_size }}"
+  cores            = {{ svc.cores }}
+  memory           = {{ svc.memory_mb }}
+  swap             = {{ svc.swap_mb }}
+  nameserver       = "{{ svc.nameserver }}"
+  bridge           = "{{ svc.bridge | default('vmbr0') }}"
+  cidr_suffix      = {{ svc.cidr_suffix | default(24) }}
+  template_name    = var.template_name
+  ssh_key_file     = var.ssh_key_file
+  cipassword       = var.cipassword
+  unifi_network_id = "{{ unifi_network_id }}"
+}

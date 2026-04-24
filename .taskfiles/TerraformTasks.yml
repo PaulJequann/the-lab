@@ -115,3 +115,21 @@ tasks:
     dir: "{{.TERRAFORM_DIR}}/infisical-data"
     cmds:
       - terraform apply --auto-approve {{.CLI_ARGS}}
+
+  init-services-data:
+    desc: Initialize terraform for the services-data host
+    dir: "{{.TERRAFORM_DIR}}/services-data"
+    cmds:
+      - terraform init {{.CLI_ARGS}}
+
+  plan-services-data:
+    desc: Show the terraform plan for the services-data host
+    dir: "{{.TERRAFORM_DIR}}/services-data"
+    cmds:
+      - terraform plan {{.CLI_ARGS}}
+
+  apply-services-data:
+    desc: Apply terraform for the services-data host
+    dir: "{{.TERRAFORM_DIR}}/services-data"
+    cmds:
+      - terraform apply --auto-approve {{.CLI_ARGS}}

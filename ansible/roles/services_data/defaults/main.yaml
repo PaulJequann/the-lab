@@ -1,0 +1,43 @@
+---
+# Static PG17 install (no pg_lsclusters discovery). Keep this aligned with the
+# postgresql-17 package pinned below; role asserts the installed version matches.
+services_data_postgres_version: 17
+
+# Listen on localhost + the LXC's LAN IP so apps on 10.0.10.0/24 can reach it.
+services_data_postgres_listen_addresses: 'localhost,10.0.10.86'
+
+# Databases to provision. Each entry: {name, user, password, allowed_cidrs, extensions}.
+# The playbook populates this from Infisical / env-var secret lookups; defaults stay empty
+# so a dry apply succeeds without any consumers configured yet.
+services_data_postgres_databases: []
+
+# Template-cluster knobs; mirror the glitchtip_data / infisical_data defaults.
+services_data_postgres_db_encoding: UTF8
+services_data_postgres_db_template: template0
+services_data_postgres_db_lc_collate: C.UTF-8
+services_data_postgres_db_lc_ctype: C.UTF-8
+
+# Extension name -> apt package map. Extensions shipped with postgresql-17 have an
+# empty string (no install needed, just CREATE EXTENSION). Add new mappings here
+# rather than deriving package names by string concat — extension and package
+# names do not always match (e.g. extension `vector` ships in `postgresql-17-pgvector`).
+services_data_postgres_extension_packages:
+  vector: postgresql-17-pgvector
+  pg_trgm: ""
+  hstore: ""
+  uuid-ossp: ""
+  citext: ""
+  btree_gin: ""
+  btree_gist: ""
+
+# Redis. Password is NOT defaulted here — it is sourced from INFISICAL_REDIS_PASSWORD
+# in the services-data.yml playbook (chicken-and-egg: this LXC hosts the Redis that
+# Infisical depends on, so Infisical itself must never be the source of truth).
+services_data_redis_enabled: true
+services_data_redis_bind: '127.0.0.1 10.0.10.86'
+services_data_redis_port: 6379
+services_data_redis_appendonly: 'yes'
+
+# Backup scaffolding is present but disabled; activation is a separate project.
+services_data_backup_mount_point: /mnt/services-data-postgres-backups
+services_data_backup_schedule: '*-*-* 04:15:00'

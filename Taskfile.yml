@@ -387,6 +387,34 @@ tasks:
         echo "  - Sign up root admin at https://{{.INFISICAL_DOMAIN}}/"
         echo "  - Save credentials to Bitwarden: homelab/infisical/admin-email + homelab/infisical/admin-password"
 
+  deploy-services-data:
+    desc: Provision the services-data LXC and configure empty PG17 + Redis (Phase 1)
+    cmds:
+      - |
+        source scripts/load-bootstrap-secrets.sh all
+        task configure && \
+        task terraform:init-services-data && \
+        task terraform:apply-services-data && \
+        task ansible:bootstrap-services-data && \
+        task ansible:configure-services-data
+    preconditions:
+      - sh: command -v rbw >/dev/null 2>&1
+        msg: "rbw must be installed on the host workstation."
+      - sh: RBW_PROFILE=bootstrap rbw config show >/dev/null 2>&1
+        msg: "rbw bootstrap profile is not configured. Configure RBW_PROFILE=bootstrap first."
+      - sh: test "$(yq eval '.proxmox_api_url' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_url in config.yaml"
+      - sh: test "$(yq eval '.proxmox_api_token_id' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_api_token_id in config.yaml"
+      - sh: test "$(yq eval '.proxmox_lxc_template_name' config.yaml)" != "REPLACE_ME"
+        msg: "Set proxmox_lxc_template_name in config.yaml"
+      - sh: test -z "$(yq eval '.proxmox_lxc_template_name' config.yaml | grep '\.tmp\.')"
+        msg: "proxmox_lxc_template_name must be the final Proxmox template volume, not a temporary .tmp download path"
+      - sh: yq eval '.proxmox_lxc_template_name' config.yaml | grep -q ':vztmpl/'
+        msg: "proxmox_lxc_template_name must look like <storage>:vztmpl/<template-file>.tar.zst"
+      - sh: test "$(yq eval '.unifi_api_url' config.yaml)" != "REPLACE_ME"
+        msg: "Set unifi_api_url in config.yaml"
+
   reconfigure-honcho:
     desc: Re-render Honcho Ansible templates and reapply Honcho runtime configuration
     preconditions:

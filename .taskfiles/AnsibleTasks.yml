@@ -169,6 +169,18 @@ tasks:
     cmds:
       - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/infisical-data.yml --limit infisical-data {{.CLI_ARGS}}
 
+  bootstrap-services-data:
+    desc: Bootstrap the services-data host with the ansible user and base settings
+    dir: "{{.ANSIBLE_DIR}}"
+    cmds:
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/configure-hosts.yaml --limit services-data -u root -e "ansible_user=root" -e "run_system_updates=false" {{.CLI_ARGS}}
+
+  configure-services-data:
+    desc: Configure PostgreSQL 17 and Redis on the services-data host
+    dir: "{{.ANSIBLE_DIR}}"
+    cmds:
+      - ansible-playbook -i {{.ANSIBLE_INVENTORY_DIR}}/hosts.yaml {{.ANSIBLE_PLAYBOOK_DIR}}/services-data.yml --limit services-data {{.CLI_ARGS}}
+
   get-kubeconfig:
     desc: Get the kubeconfig file from the k3s cluster
     dir: "{{.ANSIBLE_DIR}}"

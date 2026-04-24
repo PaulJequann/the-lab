@@ -57,7 +57,7 @@ stateful-on-LXC rule. Glitchtip's in-cluster Valkey stays as-is.
 | 8   | Honcho                       | **Not in scope.** Honcho's Postgres + Redis + app are intentionally co-located on the `honcho` LXC. No change.                 |
 | 9   | pg_hba allow-list            | `10.0.10.0/24` (node_network) — matches current behavior. Per-DB tightening is theater without VLAN segmentation.              |
 | 10  | PgBouncer                    | **No.** Default `max_connections = 100` is plenty for 2 apps. Add only if `too many connections` errors appear in practice.    |
-| 11  | pgvector                     | **Pre-install** the apt package from PGDG. Extensions are opt-in per-DB so Glitchtip/Infisical are unaffected.                 |
+| 11  | pgvector                     | **Do not pre-install.** Neither Glitchtip nor Infisical uses it. Per-DB `extensions` field triggers `postgresql-17-pgvector` install on demand. |
 | 12  | Glitchtip data migration     | **Dump/restore** (not start-fresh). 104MB takes 2 seconds; preserves DSN keys so no app-side secret rotation.                  |
 | 13  | Infisical rehearsal          | **Full rehearsal required** — dump → restore → boot scratch Infisical against new DB → verify it can decrypt secrets.          |
 | 14  | Backups                      | **Deferred to separate project.** Current state is already backup-less; consolidation slightly increases blast radius.         |
@@ -105,6 +105,27 @@ k3s cluster
 **Goal:** `services-data` LXC exists, runs empty PG17 + Redis, accepting connections.
 No production traffic yet.
 
+**Prerequisites (before step 1):**
+
+- Add a `services-data` entry to `config.yaml` `terraform_service_lxcs` dict (mirror the
+  `infisical-data` shape: `target_node`, `hostname`, `ip`, `gateway`, `storage`,
+  `disk_size`, `cores`, `memory_mb`, `swap_mb`, `nameserver`; plus `postgres` / `redis`
+  sub-keys for role-input defaults).
+- Add `services-data` to `templates/ansible/inventory/hosts.yaml.j2` using the
+  `terraform_service_lxcs['services-data']` dict pattern (matching the existing
+  `infisical-data` entry — do **not** use the flat-var pattern that `glitchtip-data` uses).
+- Run `task configure` to regenerate `ansible/` and `terraform/` consuming files.
+- Export the Ansible Infisical machine identity (`INFISICAL_CLIENT_ID`,
+  `INFISICAL_CLIENT_SECRET`) plus `INFISICAL_DB_PASSWORD` and `INFISICAL_REDIS_PASSWORD`
+  in the shell that will run the new `services-data.yml` playbook. The client ID/secret
+  are required by the `infisical.vault.read_secrets` lookup used below to fetch
+  Glitchtip's DB password (same lookup pattern as `glitchtip-data.yml` and `honcho.yml`);
+  the DB/Redis passwords cover the Infisical-hosted secrets that can't be sourced from
+  Infisical itself (chicken-and-egg, since the LXC provisioned here hosts Infisical's DB
+  and Redis). The simplest path is to run
+  `source scripts/load-bootstrap-secrets.sh ansible` — it loads all four from the
+  `bootstrap` rbw profile in one step.
+
 1. Create `terraform/services-data/main.tf` by copying `terraform/infisical-data/main.tf`:
    - `hostname = "services-data"`
    - `ip_address = "10.0.10.86"`
@@ -117,16 +138,47 @@ No production traffic yet.
    - `services_data_redis_enabled: true`
    - `services_data_redis_bind: '127.0.0.1 {{ services_data_ip }}'`
    - `services_data_redis_port: 6379`
-   - `services_data_redis_password: <from Infisical>`
+   - `services_data_redis_password: <from env var INFISICAL_REDIS_PASSWORD>` — must **not**
+     be fetched from Infisical (chicken-and-egg: this LXC hosts the Redis that Infisical
+     depends on, so Infisical may be unavailable when you need to re-apply this role)
    - `services_data_redis_appendonly: yes`
+
+   **Secret sourcing in the `services-data.yml` playbook (critical):** the new playbook
+   must dual-source, following the existing split:
+   - Glitchtip DB password → `infisical.vault.read_secrets` lookup at `/kubernetes/glitchtip`
+     (pattern from `templates/ansible/playbooks/glitchtip-data.yml.j2`).
+   - Infisical DB password → `lookup('env', 'INFISICAL_DB_PASSWORD')`
+     (pattern from `templates/ansible/playbooks/infisical-data.yml.j2`).
+   - Infisical Redis password → `lookup('env', 'INFISICAL_REDIS_PASSWORD')`.
+
+   Never source Infisical's own credentials from Infisical.
+
 3. Role tasks:
    - Install nfs-common, python3-psycopg2
-   - Add PGDG apt repo + signing key (lift from `templates/ansible/roles/honcho/tasks/main.yaml.j2`)
-   - Install `postgresql-17`, `postgresql-17-pgvector`, `postgresql-client-17`
+   - Install PGDG prerequisites (`gnupg`, `lsb-release`), fetch signing key, add PGDG apt
+     repo **unconditionally** before any postgresql package. (Borrow only the apt-key /
+     apt_repository tasks from `templates/ansible/roles/honcho/tasks/main.yaml.j2` — the
+     honcho wrapping conditional is a pgvector-availability fallback, not a pattern for
+     a PG17 install, so it does not carry over.)
+   - Install `postgresql-17`, `postgresql-client-17` with pinned versions. Do **not**
+     pre-install `postgresql-17-pgvector` at the role level — per-DB consumers that need
+     it declare it in their `extensions` field, which triggers `apt install
+     postgresql-17-pgvector` on demand (neither Glitchtip nor Infisical use pgvector
+     today).
+   - Skip `pg_lsclusters` discovery; set `services_data_postgres_version: 17` as a static
+     fact. Assert the installed package version matches before proceeding.
    - Configure `listen_addresses`, pg_hba with `managed_databases` loop (lift from
      `templates/ansible/roles/glitchtip_data/tasks/main.yaml.j2:58-143`)
    - Create roles + databases per `services_data_postgres_databases`
-   - Enable extensions per-DB from the `extensions` field
+   - Enable extensions per-DB from the `extensions` field. Do **not** derive the apt
+     package name by string-concatenating `postgresql-17-<ext>` — extension names and
+     package names diverge. Maintain an explicit extension→package map in the role
+     (seed it with the cases we actually need) and fail loudly on an unmapped
+     extension. Known mappings:
+     - `vector` → `postgresql-17-pgvector` (extension name is `vector`, per
+       `CREATE EXTENSION vector` in the existing Honcho role; package is `pgvector`)
+     - Contrib extensions that ship with `postgresql-17` (`pg_trgm`, `hstore`, `uuid-ossp`,
+       `citext`, etc.) → no package install required; just `CREATE EXTENSION`
    - Install Redis 6.0.16 from Ubuntu apt, configure bind/port/password/appendonly
    - **No backup timer/script** (deferred — leave the hooks in the role disabled by default)
 4. Provision the LXC: `terraform apply` on new module
@@ -151,9 +203,20 @@ No production traffic yet.
 3. On old `glitchtip-data`: `pg_dump -Fc -d glitchtip -f /tmp/glitchtip.dump`
 4. Transfer to `services-data` and restore: `pg_restore -d glitchtip -U glitchtip /tmp/glitchtip.dump`
 5. Verify row counts match between old and new (e.g., `SELECT count(*) FROM auth_user` on both).
-6. Update `glitchtip-secrets` InfisicalSecret so `DATABASE_URL` and `MAINTENANCE_DATABASE_URL` point to `services-data:5432/glitchtip`.
-7. ArgoCD rolls Glitchtip pods. Confirm: UI loads, existing user can log in, send a test Sentry event via curl and confirm it lands in the DB.
-8. **Rollback path:** flip InfisicalSecret connection strings back to `glitchtip-data:5432/glitchtip`. Old LXC still running.
+6. Update the `DB_HOST` raw secret in Infisical (project `the-lab`, env `prod`, path
+   `/kubernetes/glitchtip`) from `glitchtip-data` (or `10.0.10.83`) to `services-data`
+   (or `10.0.10.86`). The `glitchtip-secrets` InfisicalSecret composes `DATABASE_URL` and
+   `MAINTENANCE_DATABASE_URL` at operator reconcile time (every 60s) from raw components
+   (`DB_HOST`, `DB_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) — the YAML
+   manifest at `kubernetes/apps/glitchtip/templates/secrets/glitchtip.infisicalsecret.yaml`
+   itself does **not** need to change. Verify with:
+   `kubectl get secret glitchtip-secrets -n glitchtip -o jsonpath='{.data.DATABASE_URL}' | base64 -d`
+7. ArgoCD rolls Glitchtip pods (force pickup with `kubectl rollout restart deploy -n glitchtip`
+   if the Secret projector doesn't auto-restart). Confirm: UI loads, existing user can log
+   in, send a test Sentry event via curl and confirm it lands in the DB.
+8. **Rollback path:** revert the `DB_HOST` value in Infisical back to `glitchtip-data`
+   (or `10.0.10.83`). The operator re-composes connection strings within 60s; restart
+   Glitchtip pods. Old LXC still running.
 
 **Exit criteria:** Glitchtip serving traffic from `services-data`, test event ingested, rollback path confirmed working.
 
@@ -164,7 +227,11 @@ touching production. This is the DB that holds every secret in the cluster.
 
 1. Add Infisical to `services_data_postgres_databases` (same shape as Glitchtip).
 2. `pg_dump -Fc -d infisical` from `infisical-data` → transfer → restore into `services-data:infisical`.
-3. Deploy a scratch Infisical in a `infisical-rehearsal` namespace pointed at `services-data` (scratch namespace, scratch Helm release, chart's built-in Redis or pointed at the new LXC Redis — either works for the rehearsal).
+3. Deploy a scratch Infisical in an `infisical-rehearsal` namespace pointed at
+   `services-data` for **both** Postgres and Redis (scratch namespace, scratch Helm
+   release). The rehearsal explicitly exercises the LXC Redis path — do **not** fall
+   back to the chart-built-in Redis; the point is to verify end-to-end cutover wiring
+   before touching production.
 4. Verify the rehearsal Infisical:
    - Pods come up healthy, no decryption errors in logs
    - Can log in as the existing admin user
@@ -182,9 +249,39 @@ touching production. This is the DB that holds every secret in the cluster.
 1. Scale Infisical deployment to 0 (stops writes — brief outage; every InfisicalSecret reconciliation halts during this window, so pick a quiet time).
 2. Fresh `pg_dump -Fc -d infisical` from `infisical-data`.
 3. Drop and recreate the `infisical` DB on `services-data` (clean slate), then `pg_restore`.
-4. Update Infisical deployment config:
-   - Connection string points at `services-data:5432/infisical`
-   - Redis connection points at `services-data:6379` (with password)
+4. Update the Taskfile-managed bootstrap Secrets that Infisical itself reads (Infisical
+   cannot bootstrap from itself — see `kubernetes/infrastructure/infisical/values.yaml`
+   and `docs/plans/secret-management-redesign.md:726-768` for the current flow):
+   a. **Refactor the host source first (do this before Phase 4 begins).** The
+      `infisical-postgres-connection` (key: `connectionString`) and `infisical-secrets`
+      (key: `REDIS_URL`) Secrets are composed by the `apply-infisical-bootstrap-secrets`
+      task in `Taskfile.yml`, and the host is currently a **hardcoded literal**:
+      ```yaml
+      vars:
+        INFISICAL_NS: infisical
+        INFISICAL_DATA_IP: 10.0.10.85       # Taskfile.yml:~301
+      ```
+      It is **not** sourced from `config.yaml` or Bitwarden — updating either of those
+      alone will not repoint Infisical. Refactor the Taskfile to pull the host from a
+      single source of truth before cutover. Two acceptable options:
+      - **Option A (preferred):** promote the IP to `config.yaml` (e.g.,
+        `infisical_db_host: 10.0.10.86` under `services_data`), template it into
+        `Taskfile.yml.j2`, and regenerate via `task configure`. This keeps the value
+        reviewable in git alongside the rest of the consolidation change.
+      - **Option B:** change the literal in `Taskfile.yml` directly as part of the
+        Phase 4 commit. Cheaper, but leaves the value hardcoded in two places long-term
+        (both LXC IPs in `config.yaml` and one in the Taskfile).
+
+      Confirm the post-composition shape will be:
+      - `postgresql://infisical:${INFISICAL_DB_PASSWORD}@10.0.10.86:5432/infisical?sslmode=disable`
+      - `redis://:${INFISICAL_REDIS_PASSWORD}@10.0.10.86:6379`
+   b. With the new host in place, re-run the bootstrap flow:
+      `task apply-infisical-bootstrap-secrets` (pulls `INFISICAL_DB_PASSWORD` and
+      `INFISICAL_REDIS_PASSWORD` from `rbw`, re-applies both Secrets). Verify with:
+      - `kubectl get secret infisical-postgres-connection -n infisical -o jsonpath='{.data.connectionString}' | base64 -d`
+      - `kubectl get secret infisical-secrets -n infisical -o jsonpath='{.data.REDIS_URL}' | base64 -d`
+   c. `kubectl rollout restart deployment -n infisical` to force Infisical pods to
+      re-read the updated Secrets (`envFrom` does not watch for Secret changes).
 5. Scale Infisical back to full replicas.
 6. Verify:
    - Login works
@@ -207,7 +304,17 @@ touching production. This is the DB that holds every secret in the cluster.
 5. Delete `ansible/playbooks/glitchtip-data.yml` and `infisical-data.yml` (and templates).
 6. Remove `glitchtip_*` and `infisical_postgres_*`, `infisical_redis_*` variables from
    `templates/ansible/group_vars/services.yaml.j2`.
-7. Keep `glitchtip_data_ip` / `infisical_data_ip` variables intact for now (referenced in InfisicalSecrets as rollback target).
+7. Keep `glitchtip_data_ip` / `infisical_data_ip` variables in `config.yaml` intact for
+   now. Also keep the prior Infisical bootstrap host value reachable: if Phase 4 used
+   Option A (host sourced from `config.yaml`), leave the old `10.0.10.85` noted in a
+   commented line or a dedicated `infisical_db_host_rollback` var so the rollback is a
+   single-value flip; if Option B (literal Taskfile edit), leave the prior value in the
+   Phase 4 commit message and the git history is the rollback source. Rationale: the
+   Infisical rollback path is "flip the bootstrap host back and re-run
+   `task apply-infisical-bootstrap-secrets`"; losing the old value makes that slower.
+   `glitchtip_data_ip` is no longer load-bearing post-cutover (Glitchtip rollback is an
+   Infisical `DB_HOST` value revert, not a repo variable), but keep it for safety until
+   Day 7. Neither variable is referenced by any InfisicalSecret.
 8. Run `task configure` to regenerate `ansible/` from templates.
 9. Commit: `feat(services-data): consolidate Glitchtip + Infisical onto shared LXC`.
 
