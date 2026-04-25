@@ -187,4 +187,9 @@ services_data_backup_retention_days: 14
 services_data_enable_glitchtip_db: True
 services_data_enable_infisical_db: True
 services_data_enable_plane_db: True
+services_data_enable_grafana_db: True
+services_data_observability_enabled: True
+grafana_postgres_db: grafana
+grafana_postgres_user: grafana
+grafana_postgres_port: 5432
 node_network: 10.0.10.0/24

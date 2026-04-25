@@ -227,7 +227,7 @@ fi
 _check "$RESP" "attach k8s-auth to operator identity" >/dev/null
 _log "  [k8s-auth] configured (allowedNamespaces=${OPERATOR_SA_NAMESPACE}, allowedNames=${OPERATOR_SA_NAME})"
 
-_grant_read_paths "$OP_ID" "/kubernetes/**" "/canary/**"
+_grant_read_paths "$OP_ID" "/kubernetes/**" "/canary/**" "/services-data/garage/plane/**"
 
 echo ""
 echo "==> K8s Operator identity ID: ${OP_ID}"
@@ -340,7 +340,7 @@ _log "[2/3] Ansible Identity (Universal Auth)"
 ANS_ID="$(_create_identity "ansible")"
 _attach_to_project "$ANS_ID"
 ANS_CLIENT_ID="$(_attach_universal_auth "$ANS_ID")"
-_grant_read_paths "$ANS_ID" "/ansible/**" "/kubernetes/argocd/**" "/kubernetes/glitchtip/**" "/kubernetes/plane/**"
+_grant_read_paths "$ANS_ID" "/ansible/**" "/kubernetes/argocd/**" "/kubernetes/glitchtip/**" "/kubernetes/plane/**" "/kubernetes/grafana/**"
 ANS_SEC="$(_get_or_create_client_secret "$ANS_ID")"
 ANS_SID="${ANS_SEC%%:*}"; ANS_SVAL="${ANS_SEC#*:}"
 _rbw_set "homelab/bootstrap/infisical-ansible-client-id" "$ANS_CLIENT_ID"

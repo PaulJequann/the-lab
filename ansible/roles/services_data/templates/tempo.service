@@ -1,0 +1,22 @@
+
+[Unit]
+Description=Grafana Tempo single-binary trace backend
+After=network-online.target garage.service
+Wants=network-online.target garage.service
+
+[Service]
+User=tempo
+Group=tempo
+EnvironmentFile=-/etc/tempo/s3.env
+ExecStart=/usr/local/bin/tempo -config.file=/etc/tempo/tempo.yaml -config.expand-env=true
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ services_data_tempo_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

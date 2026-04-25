@@ -44,20 +44,6 @@ spec:
                 name: plane-app-space
                 port:
                   number: 3000
-          - path: /uploads/
-            pathType: Prefix
-            backend:
-              service:
-                name: plane-app-minio
-                port:
-                  number: 9000
-          - path: /uploads
-            pathType: Prefix
-            backend:
-              service:
-                name: plane-app-minio
-                port:
-                  number: 9000
           - path: /auth/
             pathType: Prefix
             backend:

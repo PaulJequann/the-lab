@@ -1,0 +1,21 @@
+
+[Unit]
+Description=VictoriaMetrics single-node time series database
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=victoria-metrics
+Group=victoria-metrics
+ExecStart=/usr/local/bin/victoria-metrics -storageDataPath={{ services_data_victoria_metrics_data_dir }} -httpListenAddr=0.0.0.0:8428
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ services_data_victoria_metrics_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

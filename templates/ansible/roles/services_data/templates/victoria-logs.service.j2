@@ -1,0 +1,22 @@
+{% raw %}
+[Unit]
+Description=VictoriaLogs single-node log database
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=victoria-logs
+Group=victoria-logs
+ExecStart=/usr/local/bin/victoria-logs -storageDataPath={{ services_data_victoria_logs_data_dir }} -httpListenAddr=0.0.0.0:9428
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ services_data_victoria_logs_data_dir }}
+
+[Install]
+WantedBy=multi-user.target
+{% endraw %}

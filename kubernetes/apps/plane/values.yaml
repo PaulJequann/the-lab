@@ -21,8 +21,10 @@ plane-enterprise:
     pgdb_username: plane
     pgdb_name: plane
     pgdb_remote_url: ""
-    docstore_bucket: uploads
-    use_storage_proxy: false
+    docstore_bucket: plane-uploads
+    aws_region: garage
+    aws_s3_endpoint_url: http://10.0.10.86:3900
+    use_storage_proxy: true
     allow_all_attachment_types: false
     enable_drf_spectacular: false
 
@@ -36,8 +38,7 @@ plane-enterprise:
       local_setup: true
       volumeSize: 100Mi
     minio:
-      local_setup: true
-      volumeSize: 3Gi
+      local_setup: false
     monitor:
       volumeSize: 100Mi
     opensearch:

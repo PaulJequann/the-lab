@@ -1,0 +1,75 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: victoria-metrics-stack
+  annotations:
+    cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+spec:
+  ingressClassName: cilium
+  tls:
+    - hosts:
+        - grafana.local.bysliek.com
+      secretName: grafana-tls
+  rules:
+    - host: grafana.local.bysliek.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: victoria-metrics-stack-grafana
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vmui
+  namespace: victoria-metrics-stack
+  annotations:
+    cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+spec:
+  ingressClassName: cilium
+  tls:
+    - hosts:
+        - vmui.local.bysliek.com
+      secretName: vmui-tls
+  rules:
+    - host: vmui.local.bysliek.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vmsingle-external
+                port:
+                  number: 8428
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: alertmanager
+  namespace: victoria-metrics-stack
+  annotations:
+    cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+spec:
+  ingressClassName: cilium
+  tls:
+    - hosts:
+        - alertmanager.local.bysliek.com
+      secretName: alertmanager-tls
+  rules:
+    - host: alertmanager.local.bysliek.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vmalertmanager-stack
+                port:
+                  number: 9093

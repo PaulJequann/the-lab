@@ -1,0 +1,25 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: victoria-logs
+  namespace: victoria-logs
+  annotations:
+    cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+spec:
+  ingressClassName: cilium
+  tls:
+    - hosts:
+        - vlogs.local.bysliek.com
+      secretName: victoria-logs-tls
+  rules:
+    - host: vlogs.local.bysliek.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: victoria-logs
+                port:
+                  number: 9428

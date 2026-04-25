@@ -1,0 +1,7 @@
+---
+apiVersion: v2
+name: victoria-logs
+description: External VictoriaLogs bridge
+type: application
+version: 1.0.0
+appVersion: "v1.50.0"

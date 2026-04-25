@@ -91,6 +91,8 @@ tasks:
       - bash tests/fast-local-storage-test.sh
       - bash tests/services-data-phase3-test.sh
       - bash tests/services-data-phase4-test.sh
+      - bash tests/observability-phase0-2-test.sh
+      - bash tests/observability-phase3-5-test.sh
       - bash tests/plane-enterprise-test.sh
       - bash tests/secret-scan-gate-test.sh
 

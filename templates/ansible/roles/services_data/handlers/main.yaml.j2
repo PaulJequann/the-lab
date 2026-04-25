@@ -13,4 +13,28 @@
 - name: Reload systemd
   ansible.builtin.systemd:
     daemon_reload: true
+
+- name: Restart victoria-metrics
+  ansible.builtin.systemd:
+    name: victoria-metrics
+    state: restarted
+    daemon_reload: true
+
+- name: Restart victoria-logs
+  ansible.builtin.systemd:
+    name: victoria-logs
+    state: restarted
+    daemon_reload: true
+
+- name: Restart garage
+  ansible.builtin.systemd:
+    name: garage
+    state: restarted
+    daemon_reload: true
+
+- name: Restart tempo
+  ansible.builtin.systemd:
+    name: tempo
+    state: restarted
+    daemon_reload: true
 {% endraw %}

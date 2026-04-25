@@ -1,0 +1,12 @@
+---
+apiVersion: v2
+name: victoria-metrics-stack
+description: Bare-bones VictoriaMetrics observability stack
+type: application
+version: 1.0.0
+appVersion: "v1.140.0"
+
+dependencies:
+  - name: victoria-metrics-k8s-stack
+    version: 0.74.1
+    repository: https://victoriametrics.github.io/helm-charts/

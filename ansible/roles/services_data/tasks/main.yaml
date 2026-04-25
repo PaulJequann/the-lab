@@ -271,6 +271,270 @@
     state: started
   when: services_data_redis_enabled | bool
 
+- name: Ensure observability service users exist
+  ansible.builtin.user:
+    name: "{{ observability_user.name }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ observability_user.home }}"
+    create_home: false
+  loop:
+    - { name: victoria-metrics, home: "{{ services_data_victoria_metrics_data_dir }}" }
+    - { name: victoria-logs, home: "{{ services_data_victoria_logs_data_dir }}" }
+    - { name: garage, home: "/var/lib/garage" }
+    - { name: tempo, home: "{{ services_data_tempo_data_dir }}" }
+  loop_control:
+    loop_var: observability_user
+    label: "{{ observability_user.name }}"
+  when: services_data_observability_enabled | bool
+
+- name: Ensure observability directories exist
+  ansible.builtin.file:
+    path: "{{ observability_directory.path }}"
+    state: directory
+    owner: "{{ observability_directory.owner }}"
+    group: "{{ observability_directory.group }}"
+    mode: "{{ observability_directory.mode }}"
+  loop:
+    - { path: "{{ services_data_observability_cache_dir }}", owner: root, group: root, mode: "0755" }
+    - { path: "/opt/services-data-observability", owner: root, group: root, mode: "0755" }
+    - { path: "/opt/services-data-observability/victoria-metrics-{{ services_data_victoria_metrics_version }}", owner: root, group: root, mode: "0755" }
+    - { path: "/opt/services-data-observability/victoria-logs-{{ services_data_victoria_logs_version }}", owner: root, group: root, mode: "0755" }
+    - { path: "/opt/services-data-observability/tempo-{{ services_data_tempo_version }}", owner: root, group: root, mode: "0755" }
+    - { path: "{{ services_data_victoria_metrics_data_dir }}", owner: victoria-metrics, group: victoria-metrics, mode: "0755" }
+    - { path: "{{ services_data_victoria_logs_data_dir }}", owner: victoria-logs, group: victoria-logs, mode: "0755" }
+    - { path: "{{ services_data_tempo_data_dir }}", owner: tempo, group: tempo, mode: "0755" }
+    - { path: "{{ services_data_tempo_data_dir }}/wal", owner: tempo, group: tempo, mode: "0755" }
+    - { path: "/etc/tempo", owner: root, group: tempo, mode: "0750" }
+    - { path: "/etc/garage", owner: root, group: garage, mode: "0750" }
+    - { path: "/var/lib/garage", owner: garage, group: garage, mode: "0755" }
+    - { path: "{{ services_data_garage_data_dir }}", owner: garage, group: garage, mode: "0755" }
+    - { path: "{{ services_data_garage_metadata_dir }}", owner: garage, group: garage, mode: "0755" }
+  loop_control:
+    loop_var: observability_directory
+    label: "{{ observability_directory.path }}"
+  when: services_data_observability_enabled | bool
+
+- name: Download VictoriaMetrics archive
+  ansible.builtin.get_url:
+    url: "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/{{ services_data_victoria_metrics_version }}/victoria-metrics-linux-amd64-{{ services_data_victoria_metrics_version }}.tar.gz"
+    dest: "{{ services_data_observability_cache_dir }}/victoria-metrics-linux-amd64-{{ services_data_victoria_metrics_version }}.tar.gz"
+    mode: "0644"
+  when: services_data_observability_enabled | bool
+
+- name: Download VictoriaMetrics checksums
+  ansible.builtin.get_url:
+    url: "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/{{ services_data_victoria_metrics_version }}/victoria-metrics-linux-amd64-{{ services_data_victoria_metrics_version }}_checksums.txt"
+    dest: "{{ services_data_observability_cache_dir }}/victoria-metrics-linux-amd64-{{ services_data_victoria_metrics_version }}_checksums.txt"
+    mode: "0644"
+  when: services_data_observability_enabled | bool
+
+- name: Verify VictoriaMetrics archive checksum
+  ansible.builtin.shell: >-
+    grep "victoria-metrics-linux-amd64-{{ services_data_victoria_metrics_version }}.tar.gz"
+    "{{ services_data_observability_cache_dir }}/victoria-metrics-linux-amd64-{{ services_data_victoria_metrics_version }}_checksums.txt"
+    | sha256sum -c -
+  args:
+    chdir: "{{ services_data_observability_cache_dir }}"
+  changed_when: false
+  when: services_data_observability_enabled | bool
+
+- name: Extract VictoriaMetrics
+  ansible.builtin.unarchive:
+    src: "{{ services_data_observability_cache_dir }}/victoria-metrics-linux-amd64-{{ services_data_victoria_metrics_version }}.tar.gz"
+    dest: "/opt/services-data-observability/victoria-metrics-{{ services_data_victoria_metrics_version }}"
+    remote_src: true
+    creates: "/opt/services-data-observability/victoria-metrics-{{ services_data_victoria_metrics_version }}/victoria-metrics-prod"
+  when: services_data_observability_enabled | bool
+
+- name: Link VictoriaMetrics binary
+  ansible.builtin.file:
+    src: "/opt/services-data-observability/victoria-metrics-{{ services_data_victoria_metrics_version }}/victoria-metrics-prod"
+    dest: /usr/local/bin/victoria-metrics
+    state: link
+    force: true
+  notify: Restart victoria-metrics
+  when: services_data_observability_enabled | bool
+
+- name: Download VictoriaLogs archive
+  ansible.builtin.get_url:
+    url: "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/{{ services_data_victoria_logs_version }}/victoria-logs-linux-amd64-{{ services_data_victoria_logs_version }}.tar.gz"
+    dest: "{{ services_data_observability_cache_dir }}/victoria-logs-linux-amd64-{{ services_data_victoria_logs_version }}.tar.gz"
+    mode: "0644"
+  when: services_data_observability_enabled | bool
+
+- name: Download VictoriaLogs checksums
+  ansible.builtin.get_url:
+    url: "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/{{ services_data_victoria_logs_version }}/victoria-logs-linux-amd64-{{ services_data_victoria_logs_version }}_checksums.txt"
+    dest: "{{ services_data_observability_cache_dir }}/victoria-logs-linux-amd64-{{ services_data_victoria_logs_version }}_checksums.txt"
+    mode: "0644"
+  when: services_data_observability_enabled | bool
+
+- name: Verify VictoriaLogs archive checksum
+  ansible.builtin.shell: >-
+    grep "victoria-logs-linux-amd64-{{ services_data_victoria_logs_version }}.tar.gz"
+    "{{ services_data_observability_cache_dir }}/victoria-logs-linux-amd64-{{ services_data_victoria_logs_version }}_checksums.txt"
+    | sha256sum -c -
+  args:
+    chdir: "{{ services_data_observability_cache_dir }}"
+  changed_when: false
+  when: services_data_observability_enabled | bool
+
+- name: Extract VictoriaLogs
+  ansible.builtin.unarchive:
+    src: "{{ services_data_observability_cache_dir }}/victoria-logs-linux-amd64-{{ services_data_victoria_logs_version }}.tar.gz"
+    dest: "/opt/services-data-observability/victoria-logs-{{ services_data_victoria_logs_version }}"
+    remote_src: true
+    creates: "/opt/services-data-observability/victoria-logs-{{ services_data_victoria_logs_version }}/victoria-logs-prod"
+  when: services_data_observability_enabled | bool
+
+- name: Link VictoriaLogs binary
+  ansible.builtin.file:
+    src: "/opt/services-data-observability/victoria-logs-{{ services_data_victoria_logs_version }}/victoria-logs-prod"
+    dest: /usr/local/bin/victoria-logs
+    state: link
+    force: true
+  notify: Restart victoria-logs
+  when: services_data_observability_enabled | bool
+
+- name: Download Tempo archive
+  ansible.builtin.get_url:
+    url: "https://github.com/grafana/tempo/releases/download/v{{ services_data_tempo_version }}/tempo_{{ services_data_tempo_version }}_linux_amd64.tar.gz"
+    dest: "{{ services_data_observability_cache_dir }}/tempo_{{ services_data_tempo_version }}_linux_amd64.tar.gz"
+    mode: "0644"
+  when: services_data_observability_enabled | bool
+
+- name: Download Tempo checksums
+  ansible.builtin.get_url:
+    url: "https://github.com/grafana/tempo/releases/download/v{{ services_data_tempo_version }}/SHA256SUMS"
+    dest: "{{ services_data_observability_cache_dir }}/tempo_{{ services_data_tempo_version }}_SHA256SUMS"
+    mode: "0644"
+  when: services_data_observability_enabled | bool
+
+- name: Verify Tempo archive checksum
+  ansible.builtin.shell: >-
+    grep "tempo_{{ services_data_tempo_version }}_linux_amd64.tar.gz"
+    "{{ services_data_observability_cache_dir }}/tempo_{{ services_data_tempo_version }}_SHA256SUMS"
+    | sha256sum -c -
+  args:
+    chdir: "{{ services_data_observability_cache_dir }}"
+  changed_when: false
+  when: services_data_observability_enabled | bool
+
+- name: Extract Tempo
+  ansible.builtin.unarchive:
+    src: "{{ services_data_observability_cache_dir }}/tempo_{{ services_data_tempo_version }}_linux_amd64.tar.gz"
+    dest: "/opt/services-data-observability/tempo-{{ services_data_tempo_version }}"
+    remote_src: true
+    creates: "/opt/services-data-observability/tempo-{{ services_data_tempo_version }}/tempo"
+  when: services_data_observability_enabled | bool
+
+- name: Link Tempo binary
+  ansible.builtin.file:
+    src: "/opt/services-data-observability/tempo-{{ services_data_tempo_version }}/tempo"
+    dest: /usr/local/bin/tempo
+    state: link
+    force: true
+  notify: Restart tempo
+  when: services_data_observability_enabled | bool
+
+- name: Download Garage binary
+  ansible.builtin.get_url:
+    url: "https://garagehq.deuxfleurs.fr/_releases/{{ services_data_garage_version }}/x86_64-unknown-linux-musl/garage"
+    dest: "/usr/local/bin/garage-{{ services_data_garage_version }}"
+    checksum: "sha256:{{ services_data_garage_sha256 }}"
+    mode: "0755"
+  when: services_data_observability_enabled | bool
+
+- name: Link Garage binary
+  ansible.builtin.file:
+    src: "/usr/local/bin/garage-{{ services_data_garage_version }}"
+    dest: /usr/local/bin/garage
+    state: link
+    force: true
+  notify: Restart garage
+  when: services_data_observability_enabled | bool
+
+- name: Generate Garage secret files
+  ansible.builtin.shell: |
+    set -euo pipefail
+    umask 077
+    test -s /etc/garage/rpc_secret || openssl rand -hex 32 > /etc/garage/rpc_secret
+    test -s /etc/garage/admin_token || openssl rand -base64 32 > /etc/garage/admin_token
+    test -s /etc/garage/metrics_token || openssl rand -base64 32 > /etc/garage/metrics_token
+    chown garage:garage /etc/garage/rpc_secret /etc/garage/admin_token /etc/garage/metrics_token
+    chmod 0600 /etc/garage/rpc_secret /etc/garage/admin_token /etc/garage/metrics_token
+  args:
+    executable: /bin/bash
+  changed_when: false
+  no_log: true
+  when: services_data_observability_enabled | bool
+
+- name: Configure Garage
+  ansible.builtin.template:
+    src: garage.toml
+    dest: /etc/garage.toml
+    owner: root
+    group: garage
+    mode: "0640"
+  notify: Restart garage
+  when: services_data_observability_enabled | bool
+
+- name: Configure Tempo
+  ansible.builtin.template:
+    src: tempo.yaml
+    dest: /etc/tempo/tempo.yaml
+    owner: root
+    group: tempo
+    mode: "0640"
+  notify: Restart tempo
+  when: services_data_observability_enabled | bool
+
+- name: Install observability systemd units
+  ansible.builtin.template:
+    src: "{{ observability_unit }}.service"
+    dest: "/etc/systemd/system/{{ observability_unit }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - victoria-metrics
+    - victoria-logs
+    - garage
+    - tempo
+  loop_control:
+    loop_var: observability_unit
+  notify: Reload systemd
+  when: services_data_observability_enabled | bool
+
+- name: Ensure observability services are enabled and started
+  ansible.builtin.systemd:
+    name: "{{ observability_service }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - victoria-metrics
+    - victoria-logs
+    - garage
+  loop_control:
+    loop_var: observability_service
+  when: services_data_observability_enabled | bool
+
+- name: Check whether Tempo S3 credentials are installed
+  ansible.builtin.stat:
+    path: /etc/tempo/s3.env
+  register: services_data_tempo_s3_env
+  when: services_data_observability_enabled | bool
+
+- name: Ensure Tempo service state matches credential readiness
+  ansible.builtin.systemd:
+    name: tempo
+    enabled: true
+    state: "{{ 'started' if services_data_tempo_s3_env.stat.exists else 'stopped' }}"
+    daemon_reload: true
+  when: services_data_observability_enabled | bool
+
 # Backup timer intentionally not wired up here. When the separate backups project
 # lands, add the template-install + systemd tasks guarded by
 # `services_data_backup_enabled | bool`.

@@ -7,9 +7,9 @@ module "service_host" {
   ip_address       = "10.0.10.86"
   gateway          = "10.0.10.1"
   storage          = "local-lvm"
-  disk_size        = "30G"
-  cores            = 2
-  memory           = 2048
+  disk_size        = "120G"
+  cores            = 4
+  memory           = 6144
   swap             = 0
   nameserver       = "1.1.1.1"
   bridge           = "vmbr0"

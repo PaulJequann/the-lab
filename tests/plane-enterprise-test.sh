@@ -74,8 +74,8 @@ test_plane_custom_cilium_ingress_routes_expected_services() {
   assert_contains "secretName: plane-tls" "${PLANE_INGRESS}"
   assert_contains "name: plane-app-web" "${PLANE_INGRESS}"
   assert_contains "name: plane-app-api" "${PLANE_INGRESS}"
-  assert_contains "name: plane-app-minio" "${PLANE_INGRESS}"
-  assert_contains "number: 9000" "${PLANE_INGRESS}"
+  assert_not_contains "name: plane-app-minio" "${PLANE_INGRESS}"
+  assert_not_contains "number: 9000" "${PLANE_INGRESS}"
 }
 
 test_services_data_provisions_plane_database_from_infisical() {
