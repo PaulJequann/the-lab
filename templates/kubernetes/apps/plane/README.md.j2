@@ -1,0 +1,28 @@
+# Plane Enterprise
+
+This wrapper chart deploys Plane Enterprise through the repository's ArgoCD
+auto-discovery flow.
+
+Secrets are sourced from Infisical path `/kubernetes/plane` and materialized by
+`templates/secrets/plane.infisicalsecret.yaml`. Keep secret values out of git;
+only non-secret chart settings belong in `values.yaml`.
+
+Required Infisical keys:
+
+- `SECRET_KEY`
+- `LIVE_SERVER_SECRET_KEY`
+- `AES_SECRET_KEY`
+- `PI_INTERNAL_SECRET`
+- `SILO_HMAC_SECRET_KEY`
+- `POSTGRES_PASSWORD`
+- `MINIO_ROOT_USER`
+- `MINIO_ROOT_PASSWORD`
+- `RABBITMQ_DEFAULT_USER`
+- `RABBITMQ_DEFAULT_PASS`
+
+After rendering with `task configure`, run:
+
+```bash
+helm dependency build kubernetes/apps/plane
+helm template {{ plane_release_name }} kubernetes/apps/plane --namespace {{ plane_namespace }}
+```

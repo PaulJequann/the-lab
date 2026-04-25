@@ -1,0 +1,64 @@
+---
+plane-enterprise:
+  planeVersion: v2.5.3
+
+  license:
+    licenseServer: https://prime.plane.so
+    licenseDomain: plane.local.bysliek.com
+
+  ingress:
+    enabled: false
+    minioHost: ""
+    rabbitmqHost: ""
+
+  ssl:
+    tls_secret_name: plane-tls
+    createIssuer: false
+    generateCerts: false
+
+  env:
+    storageClass: nfs-csi
+    pgdb_username: plane
+    pgdb_name: plane
+    pgdb_remote_url: ""
+    docstore_bucket: uploads
+    use_storage_proxy: false
+    allow_all_attachment_types: false
+    enable_drf_spectacular: false
+
+  services:
+    postgres:
+      local_setup: false
+    redis:
+      local_setup: true
+      volumeSize: 500Mi
+    rabbitmq:
+      local_setup: true
+      volumeSize: 100Mi
+    minio:
+      local_setup: true
+      volumeSize: 3Gi
+    monitor:
+      volumeSize: 100Mi
+    opensearch:
+      local_setup: false
+    silo:
+      enabled: true
+      connectors:
+        slack:
+          enabled: false
+        github:
+          enabled: false
+        gitlab:
+          enabled: false
+    email_service:
+      enabled: false
+    pi:
+      enabled: false
+
+  external_secrets:
+    rabbitmq_existingSecret: plane-rabbitmq-secrets
+    app_env_existingSecret: plane-app-secrets
+    live_env_existingSecret: plane-live-secrets
+    silo_env_existingSecret: plane-silo-secrets
+    doc_store_existingSecret: plane-doc-store-secrets

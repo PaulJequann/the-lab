@@ -1,0 +1,11 @@
+apiVersion: v2
+name: plane
+description: Plane Enterprise application
+type: application
+version: 1.0.0
+appVersion: "v2.5.3"
+
+dependencies:
+  - name: plane-enterprise
+    version: 2.3.2
+    repository: https://helm.plane.so/

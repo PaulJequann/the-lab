@@ -186,4 +186,5 @@ services_data_backup_nfs_path: /mnt/k8s-ssd-pool/services-data-postgres-backups
 services_data_backup_retention_days: 14
 services_data_enable_glitchtip_db: True
 services_data_enable_infisical_db: True
+services_data_enable_plane_db: True
 node_network: 10.0.10.0/24

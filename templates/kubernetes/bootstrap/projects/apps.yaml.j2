@@ -21,6 +21,8 @@ spec:
       server: https://kubernetes.default.svc
     - namespace: 'media'
       server: https://kubernetes.default.svc
+    - namespace: '{{ plane_namespace }}'
+      server: https://kubernetes.default.svc
     - namespace: 'app-*'  # Legacy pattern for backwards compatibility
       server: https://kubernetes.default.svc
 

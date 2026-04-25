@@ -18,6 +18,12 @@
       no_log: true
       when: services_data_enable_glitchtip_db | default(false) | bool
 
+    - name: Fetch Plane DB credentials from Infisical
+      ansible.builtin.set_fact:
+        _plane_infisical: "{{ lookup('infisical.vault.read_secrets', as_dict=True, universal_auth_client_id=lookup('env', 'INFISICAL_CLIENT_ID'), universal_auth_client_secret=lookup('env', 'INFISICAL_CLIENT_SECRET'), project_id=infisical_project_id, path='/kubernetes/plane', env_slug=infisical_env_slug, url='https://' + infisical_domain) }}"
+      no_log: true
+      when: services_data_enable_plane_db | default(false) | bool
+
     # Infisical's own DB/Redis passwords must never be sourced from Infisical
     # (chicken-and-egg: this LXC hosts the DB/Redis that Infisical depends on).
     # Both come from the bootstrap rbw profile via scripts/load-bootstrap-secrets.sh.
@@ -57,6 +63,14 @@
               'allowed_cidrs': [node_network],
               'extensions': []
             }] if services_data_enable_infisical_db | default(false) | bool else [])
+            +
+            ([{
+              'name': 'plane',
+              'user': 'plane',
+              'password': _plane_infisical.POSTGRES_PASSWORD | default(''),
+              'allowed_cidrs': [node_network],
+              'extensions': []
+            }] if services_data_enable_plane_db | default(false) | bool else [])
           }}
       no_log: true
 

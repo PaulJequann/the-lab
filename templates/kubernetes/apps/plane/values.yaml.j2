@@ -1,0 +1,64 @@
+---
+plane-enterprise:
+  planeVersion: {{ plane_version }}
+
+  license:
+    licenseServer: {{ plane_license_server }}
+    licenseDomain: {{ plane_domain }}
+
+  ingress:
+    enabled: false
+    minioHost: ""
+    rabbitmqHost: ""
+
+  ssl:
+    tls_secret_name: plane-tls
+    createIssuer: false
+    generateCerts: false
+
+  env:
+    storageClass: {{ plane_storage_class }}
+    pgdb_username: {{ plane_postgres_user }}
+    pgdb_name: {{ plane_postgres_db }}
+    pgdb_remote_url: ""
+    docstore_bucket: {{ plane_minio_bucket }}
+    use_storage_proxy: false
+    allow_all_attachment_types: false
+    enable_drf_spectacular: false
+
+  services:
+    postgres:
+      local_setup: false
+    redis:
+      local_setup: true
+      volumeSize: {{ plane_valkey_storage_size }}
+    rabbitmq:
+      local_setup: true
+      volumeSize: {{ plane_rabbitmq_storage_size }}
+    minio:
+      local_setup: true
+      volumeSize: {{ plane_minio_storage_size }}
+    monitor:
+      volumeSize: {{ plane_monitor_storage_size }}
+    opensearch:
+      local_setup: {{ plane_opensearch_enabled | tojson }}
+    silo:
+      enabled: {{ plane_silo_enabled | tojson }}
+      connectors:
+        slack:
+          enabled: {{ plane_silo_slack_enabled | tojson }}
+        github:
+          enabled: {{ plane_silo_github_enabled | tojson }}
+        gitlab:
+          enabled: {{ plane_silo_gitlab_enabled | tojson }}
+    email_service:
+      enabled: {{ plane_email_enabled | tojson }}
+    pi:
+      enabled: {{ plane_pi_enabled | tojson }}
+
+  external_secrets:
+    rabbitmq_existingSecret: plane-rabbitmq-secrets
+    app_env_existingSecret: plane-app-secrets
+    live_env_existingSecret: plane-live-secrets
+    silo_env_existingSecret: plane-silo-secrets
+    doc_store_existingSecret: plane-doc-store-secrets

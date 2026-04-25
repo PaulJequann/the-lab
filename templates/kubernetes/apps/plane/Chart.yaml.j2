@@ -1,0 +1,11 @@
+apiVersion: v2
+name: plane
+description: Plane Enterprise application
+type: application
+version: 1.0.0
+appVersion: "{{ plane_version }}"
+
+dependencies:
+  - name: {{ plane_chart_name }}
+    version: {{ plane_chart_version }}
+    repository: {{ plane_chart_repo }}

@@ -1,0 +1,95 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: plane-app
+  namespace: plane
+  annotations:
+    cert-manager.io/cluster-issuer: cloudflare-cluster-issuer
+spec:
+  ingressClassName: cilium
+  tls:
+    - hosts:
+        - plane.local.bysliek.com
+      secretName: plane-tls
+  rules:
+    - host: plane.local.bysliek.com
+      http:
+        paths:
+          - path: /marketplace/
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-api
+                port:
+                  number: 8000
+          - path: /graphql/
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-api
+                port:
+                  number: 8000
+          - path: /god-mode/
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-admin
+                port:
+                  number: 3000
+          - path: /spaces/
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-space
+                port:
+                  number: 3000
+          - path: /uploads/
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-minio
+                port:
+                  number: 9000
+          - path: /uploads
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-minio
+                port:
+                  number: 9000
+          - path: /auth/
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-api
+                port:
+                  number: 8000
+          - path: /live/
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-live
+                port:
+                  number: 3000
+          - path: /silo/
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-silo
+                port:
+                  number: 3000
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-api
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: plane-app-web
+                port:
+                  number: 3000

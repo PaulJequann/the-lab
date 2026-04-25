@@ -1,0 +1,6 @@
+dependencies:
+- name: plane-enterprise
+  repository: https://helm.plane.so/
+  version: 2.3.2
+digest: sha256:88ba9b39e2d85ec9e989f1057abc953e19968895c9500317e951b524b2eba2d5
+generated: "2026-04-25T11:29:54.033854216-04:00"
