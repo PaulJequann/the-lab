@@ -85,8 +85,18 @@ tasks:
   test:
     desc: Run local regression tests
     cmds:
+      - task: scan-secrets
       - bash tests/load-bootstrap-secrets-test.sh
+      - bash tests/infisical-task-split-test.sh
       - bash tests/fast-local-storage-test.sh
+      - bash tests/services-data-phase3-test.sh
+      - bash tests/services-data-phase4-test.sh
+      - bash tests/secret-scan-gate-test.sh
+
+  scan-secrets:
+    desc: Scan staged changes for leaked secrets
+    cmds:
+      - infisical scan git-changes --staged --redact --no-color --exit-code 1
 
   migrate-fast-local-pvc:
     desc: Cold-copy app data from NFS PVCs to staged fast-local PVCs
@@ -298,7 +308,10 @@ tasks:
     desc: Create or reconcile the Kubernetes namespace and bootstrap secrets for Infisical
     vars:
       INFISICAL_NS: infisical
-      INFISICAL_DATA_IP: 10.0.10.85
+      INFISICAL_BOOTSTRAP_HOST:
+        sh: yq eval '.terraform_service_lxcs."services-data".ip' config.yaml
+      INFISICAL_BOOTSTRAP_ROLLBACK_HOST:
+        sh: yq eval '.terraform_service_lxcs."infisical-data".ip' config.yaml
     env:
       INFISICAL_DB_PASSWORD:
         sh: RBW_PROFILE=bootstrap rbw get homelab/bootstrap/infisical-db-password
@@ -311,21 +324,24 @@ tasks:
     preconditions:
       - sh: command -v python3 >/dev/null 2>&1
         msg: "python3 required for URL-encoding secret passwords."
+      - sh: yq --version 2>/dev/null | grep -q '^yq (https://github.com/mikefarah/yq/) version v4\.'
+        msg: "apply-infisical-bootstrap-secrets requires Mike Farah yq v4. Install the system package: go-yq."
     cmds:
       - kubectl create namespace {{.INFISICAL_NS}} --dry-run=client -o yaml | kubectl apply -f -
       - |
         DB_PW_ENC=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["INFISICAL_DB_PASSWORD"], safe=""))')
         REDIS_PW_ENC=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["INFISICAL_REDIS_PASSWORD"], safe=""))')
+        echo "Composing Infisical bootstrap Secrets for {{.INFISICAL_BOOTSTRAP_HOST}} (rollback host: {{.INFISICAL_BOOTSTRAP_ROLLBACK_HOST}})"
         kubectl create secret generic infisical-secrets \
           --namespace={{.INFISICAL_NS}} \
           --from-literal="ENCRYPTION_KEY=${INFISICAL_ENCRYPTION_KEY}" \
           --from-literal="AUTH_SECRET=${INFISICAL_AUTH_SECRET}" \
-          --from-literal="REDIS_URL=redis://:${REDIS_PW_ENC}@{{.INFISICAL_DATA_IP}}:6379" \
+          --from-literal="REDIS_URL=redis://:${REDIS_PW_ENC}@{{.INFISICAL_BOOTSTRAP_HOST}}:6379" \
           --from-literal="SITE_URL=https://infisical.local.bysliek.com" \
           --dry-run=client -o yaml | kubectl apply -f -
         kubectl create secret generic infisical-postgres-connection \
           --namespace={{.INFISICAL_NS}} \
-          --from-literal="connectionString=postgresql://infisical:${DB_PW_ENC}@{{.INFISICAL_DATA_IP}}:5432/infisical?sslmode=disable" \
+          --from-literal="connectionString=postgresql://infisical:${DB_PW_ENC}@{{.INFISICAL_BOOTSTRAP_HOST}}:5432/infisical?sslmode=disable" \
           --dry-run=client -o yaml | kubectl apply -f -
 
   deploy-infisical-app:
@@ -414,6 +430,125 @@ tasks:
         msg: "proxmox_lxc_template_name must look like <storage>:vztmpl/<template-file>.tar.zst"
       - sh: test "$(yq eval '.unifi_api_url' config.yaml)" != "REPLACE_ME"
         msg: "Set unifi_api_url in config.yaml"
+
+  phase3-infisical-rehearsal:
+    desc: Restore Infisical into services-data and deploy a scratch Infisical release
+    silent: true
+    vars:
+      INFISICAL_DATA_IP: 10.0.10.85
+      SERVICES_DATA_IP: 10.0.10.86
+      INFISICAL_REHEARSAL_NS: infisical-rehearsal
+      INFISICAL_CHART_DIR: "{{.KUBERNETES_DIR}}/infrastructure/infisical"
+    cmds:
+      - |
+        set -euo pipefail
+
+        source scripts/load-bootstrap-secrets.sh ansible infisical
+
+        echo "Removing any stale services-data Infisical rehearsal DB before role convergence..."
+        ssh pj@{{.SERVICES_DATA_IP}} "sudo -n -u postgres psql -v ON_ERROR_STOP=1 -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'infisical';\" && sudo -n -u postgres dropdb --if-exists infisical"
+
+        task configure
+        task ansible:configure-services-data
+
+        echo "Resetting scratch namespace and restoring a fresh Infisical dump into services-data..."
+        kubectl delete namespace {{.INFISICAL_REHEARSAL_NS}} --ignore-not-found --wait=true
+
+        DUMP_FILE="$(mktemp -t infisical-rehearsal.XXXXXX.dump)"
+        trap 'rm -f "${DUMP_FILE}"' EXIT
+
+        ssh pj@{{.INFISICAL_DATA_IP}} "sudo -n -u postgres pg_dump -Fc -d infisical" > "${DUMP_FILE}"
+
+        ssh pj@{{.SERVICES_DATA_IP}} "sudo -n -u postgres psql -v ON_ERROR_STOP=1 -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'infisical';\" && sudo -n -u postgres dropdb --if-exists infisical && sudo -n -u postgres createdb -O infisical --encoding=UTF8 --template=template0 --lc-collate=C.UTF-8 --lc-ctype=C.UTF-8 infisical"
+        scp "${DUMP_FILE}" pj@{{.SERVICES_DATA_IP}}:/tmp/infisical-rehearsal.dump
+        ssh pj@{{.SERVICES_DATA_IP}} "chmod 0644 /tmp/infisical-rehearsal.dump && sudo -n -u postgres pg_restore --no-owner --role=infisical -d infisical /tmp/infisical-rehearsal.dump && rm -f /tmp/infisical-rehearsal.dump"
+
+        kubectl create namespace {{.INFISICAL_REHEARSAL_NS}} --dry-run=client -o yaml | kubectl apply -f -
+
+        DB_PW_ENC=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["INFISICAL_DB_PASSWORD"], safe=""))')
+        REDIS_PW_ENC=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["INFISICAL_REDIS_PASSWORD"], safe=""))')
+
+        kubectl create secret generic infisical-secrets \
+          --namespace={{.INFISICAL_REHEARSAL_NS}} \
+          --from-literal="ENCRYPTION_KEY=${INFISICAL_ENCRYPTION_KEY}" \
+          --from-literal="AUTH_SECRET=${INFISICAL_AUTH_SECRET}" \
+          --from-literal="REDIS_URL=redis://:${REDIS_PW_ENC}@{{.SERVICES_DATA_IP}}:6379" \
+          --from-literal="SITE_URL=http://localhost:8080" \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+        kubectl create secret generic infisical-postgres-connection \
+          --namespace={{.INFISICAL_REHEARSAL_NS}} \
+          --from-literal="connectionString=postgresql://infisical:${DB_PW_ENC}@{{.SERVICES_DATA_IP}}:5432/infisical?sslmode=disable" \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+        helm dependency build "{{.INFISICAL_CHART_DIR}}"
+        helm upgrade --install infisical-rehearsal "{{.INFISICAL_CHART_DIR}}" \
+          --namespace {{.INFISICAL_REHEARSAL_NS}} \
+          --set infisical-standalone.ingress.enabled=false \
+          --set infisical-standalone.infisical.kubeSecretRef=infisical-secrets \
+          --set infisical-standalone.infisical.replicaCount=1 \
+          --set infisical-standalone.postgresql.enabled=false \
+          --set infisical-standalone.postgresql.useExistingPostgresSecret.enabled=true \
+          --set infisical-standalone.postgresql.useExistingPostgresSecret.existingConnectionStringSecret.name=infisical-postgres-connection \
+          --set infisical-standalone.postgresql.useExistingPostgresSecret.existingConnectionStringSecret.key=connectionString \
+          --set infisical-standalone.redis.enabled=false \
+          --set tokenReviewer.enabled=false
+
+        kubectl -n {{.INFISICAL_REHEARSAL_NS}} rollout status deployment/infisical --timeout=5m
+
+        echo ""
+        echo "Phase 3 rehearsal is deployed in namespace {{.INFISICAL_REHEARSAL_NS}}."
+        echo "Verify decryption and API behavior, then run: task phase3-infisical-rehearsal-cleanup"
+        echo "Useful checks:"
+        echo "  kubectl -n {{.INFISICAL_REHEARSAL_NS}} logs deployment/infisical --tail=100"
+        echo "  kubectl -n {{.INFISICAL_REHEARSAL_NS}} port-forward svc/infisical 8080:8080"
+    preconditions:
+      - sh: command -v rbw >/dev/null 2>&1
+        msg: "rbw must be installed on the host workstation."
+      - sh: RBW_PROFILE=bootstrap rbw config show >/dev/null 2>&1
+        msg: "rbw bootstrap profile is not configured. Configure RBW_PROFILE=bootstrap first."
+      - sh: command -v kubectl >/dev/null 2>&1
+        msg: "kubectl must be installed."
+      - sh: kubectl cluster-info >/dev/null 2>&1
+        msg: "kubectl cannot reach the current cluster. Fix kubeconfig or cluster access before running phase3-infisical-rehearsal."
+      - sh: command -v helm >/dev/null 2>&1
+        msg: "helm must be installed."
+      - sh: command -v ssh >/dev/null 2>&1
+        msg: "ssh must be installed."
+      - sh: command -v scp >/dev/null 2>&1
+        msg: "scp must be installed."
+      - sh: command -v python3 >/dev/null 2>&1
+        msg: "python3 is required for URL-encoding secret passwords."
+      - sh: test "$(yq eval '.terraform_service_lxcs."services-data".enable_infisical_db' config.yaml)" = "true"
+        msg: "Set terraform_service_lxcs.services-data.enable_infisical_db=true in config.yaml before Phase 3."
+      - sh: ip route get {{.INFISICAL_DATA_IP}} >/dev/null 2>&1
+        msg: "No local route to infisical-data at {{.INFISICAL_DATA_IP}}."
+      - sh: ip route get {{.SERVICES_DATA_IP}} >/dev/null 2>&1
+        msg: "No local route to services-data at {{.SERVICES_DATA_IP}}."
+
+  phase3-infisical-rehearsal-cleanup:
+    desc: Remove scratch Infisical rehearsal deployment and empty the services-data Infisical DB
+    silent: true
+    vars:
+      SERVICES_DATA_IP: 10.0.10.86
+      INFISICAL_REHEARSAL_NS: infisical-rehearsal
+    cmds:
+      - |
+        set -euo pipefail
+
+        helm uninstall infisical-rehearsal --namespace {{.INFISICAL_REHEARSAL_NS}} --ignore-not-found || true
+        kubectl delete namespace {{.INFISICAL_REHEARSAL_NS}} --ignore-not-found --wait=true
+
+        ssh pj@{{.SERVICES_DATA_IP}} "sudo -n -u postgres psql -v ON_ERROR_STOP=1 -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'infisical';\" && sudo -n -u postgres dropdb --if-exists infisical && sudo -n -u postgres createdb -O infisical --encoding=UTF8 --template=template0 --lc-collate=C.UTF-8 --lc-ctype=C.UTF-8 infisical"
+    preconditions:
+      - sh: command -v kubectl >/dev/null 2>&1
+        msg: "kubectl must be installed."
+      - sh: command -v helm >/dev/null 2>&1
+        msg: "helm must be installed."
+      - sh: command -v ssh >/dev/null 2>&1
+        msg: "ssh must be installed."
+      - sh: ip route get {{.SERVICES_DATA_IP}} >/dev/null 2>&1
+        msg: "No local route to services-data at {{.SERVICES_DATA_IP}}."
 
   reconfigure-honcho:
     desc: Re-render Honcho Ansible templates and reapply Honcho runtime configuration

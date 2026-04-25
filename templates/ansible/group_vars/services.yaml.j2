@@ -31,8 +31,8 @@ honcho_embedding_model: {{ honcho_embedding_model }}
 honcho_embedding_vector_dimensions: {{ honcho_embedding_vector_dimensions }}
 honcho_embedding_max_input_tokens: {{ honcho_embedding_max_input_tokens }}
 honcho_embedding_max_tokens_per_request: {{ honcho_embedding_max_tokens_per_request }}
-honcho_langfuse_host: {{ honcho_langfuse_host }}
-honcho_langfuse_public_key: {{ honcho_langfuse_public_key }}
+honcho_langfuse_host: {{ honcho_langfuse_host | default('') | tojson }}
+honcho_langfuse_public_key: {{ honcho_langfuse_public_key | default('') | tojson }}
 honcho_collect_metrics_local: {{ honcho_collect_metrics_local }}
 honcho_local_metrics_file: {{ honcho_local_metrics_file }}
 honcho_reasoning_traces_file: {{ honcho_reasoning_traces_file }}
@@ -142,7 +142,7 @@ honcho_dream_surprisal_include_levels: {{ honcho_dream_surprisal_include_levels 
 honcho_metrics_enabled: {{ honcho_metrics_enabled }}
 honcho_metrics_namespace: {{ honcho_metrics_namespace }}
 honcho_telemetry_enabled: {{ honcho_telemetry_enabled }}
-honcho_telemetry_endpoint: {{ honcho_telemetry_endpoint }}
+honcho_telemetry_endpoint: {{ honcho_telemetry_endpoint | default('') | tojson }}
 honcho_telemetry_namespace: {{ honcho_telemetry_namespace }}
 honcho_telemetry_batch_size: {{ honcho_telemetry_batch_size }}
 honcho_telemetry_flush_interval_seconds: {{ honcho_telemetry_flush_interval_seconds }}

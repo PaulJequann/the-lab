@@ -1,5 +1,6 @@
+# yamllint disable-file
 ---
-# ServiceAccount + ClusterRoleBinding used by Infisical to validate
+{{ if .Values.tokenReviewer.enabled }}# ServiceAccount + ClusterRoleBinding used by Infisical to validate
 # Kubernetes Auth tokens via the TokenReview API. The Infisical Kubernetes
 # Operator authenticates by sending its own short-lived ProjectedToken;
 # Infisical hits the cluster's TokenReview endpoint using THIS account's JWT.
@@ -34,3 +35,4 @@ subjects:
   - kind: ServiceAccount
     name: infisical-token-reviewer
     namespace: infisical
+{{ end }}

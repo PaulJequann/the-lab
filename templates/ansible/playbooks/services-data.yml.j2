@@ -31,8 +31,9 @@
       ansible.builtin.assert:
         that:
           - services_data_redis_password | length > 0
+          - not (services_data_enable_infisical_db | default(false) | bool) or _infisical_db_password | length > 0
         fail_msg: >-
-          INFISICAL_REDIS_PASSWORD is not set in the playbook environment.
+          Required Infisical bootstrap secrets are missing from the playbook environment.
           Run: source scripts/load-bootstrap-secrets.sh all
           (the 'infisical' group alone is enough if you've already loaded
           the 'ansible' group in this shell).

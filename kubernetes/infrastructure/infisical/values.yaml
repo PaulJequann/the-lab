@@ -1,3 +1,7 @@
+---
+tokenReviewer:
+  enabled: true
+
 infisical-standalone:
   infisical:
     fullnameOverride: infisical

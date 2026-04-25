@@ -242,6 +242,19 @@ touching production. This is the DB that holds every secret in the cluster.
 
 **Exit criteria:** Demonstrated that a dump from production restores cleanly and Infisical boots against it with full secret decryption working.
 
+**Status 2026-04-25:** Completed. `task phase3-infisical-rehearsal` converged
+`services-data`, restored a fresh `infisical-data` dump into `services-data:infisical`,
+and deployed the scratch `infisical-rehearsal` Helm release pointed at
+`10.0.10.86` for both Postgres and Redis. Verification passed:
+- Scratch pod rolled out healthy and `/api/status` returned 200.
+- Logs showed successful Postgres and Redis connections; Redis 6.0.16 produced the
+  expected "minimum Redis 6.2.0 recommended" warning but did not block startup.
+- Existing restored secrets decrypted: the Ansible machine identity read 13 secrets
+  from `/kubernetes/glitchtip`.
+- Admin identity write/read/delete probe succeeded against the restored rehearsal DB.
+- `task phase3-infisical-rehearsal-cleanup` removed the scratch namespace and recreated
+  an empty `services-data:infisical` DB for the future production cutover dump.
+
 ### Phase 4 — Infisical production cutover
 
 **Goal:** Production Infisical running against `services-data`. Old `infisical-data` still running as fallback.
@@ -291,6 +304,24 @@ touching production. This is the DB that holds every secret in the cluster.
 7. **Rollback path:** scale Infisical to 0, flip connection strings back, scale up. Original data on `infisical-data` is untouched because we only read from it.
 
 **Exit criteria:** Production Infisical healthy on `services-data`, all InfisicalSecrets still reconciling, rollback path confirmed.
+
+**Status 2026-04-25:** Completed. Production Infisical was scaled to zero, a fresh
+`infisical-data` dump was restored into `services-data:infisical`, and the bootstrap
+Secrets were repointed to `10.0.10.86` for both Postgres and Redis. Verification passed:
+- Production `infisical-postgres-connection` and `infisical-secrets` now resolve to
+  `10.0.10.86` (values verified with credentials redacted).
+- Infisical deployment rolled back up to 1/1 Ready and `/api/status` returned 200.
+- Startup logs showed successful Postgres and Redis connections.
+- Machine identity read 13 restored secrets from `/kubernetes/glitchtip`.
+- Admin identity write/read/delete probe succeeded against the production restored DB.
+- `/canary` write propagated through the Infisical operator into the managed
+  `infisical-canary/canary-heartbeat` Kubernetes Secret, then the probe key was deleted
+  and removed from the managed Secret.
+- All `InfisicalSecret` resources reported `LoadedInfisicalToken=True`,
+  `ReadyToSyncSecrets=True`, and `AutoRedeployReady=True`; operator logs showed
+  successful syncs for canary, ArgoCD, cert-manager, Deeptutor, and Glitchtip.
+- The original `infisical-data:infisical` database was left intact with the same table
+  count as the restored target, so rollback remains a Secret host flip plus pod restart.
 
 ### Phase 5 — Cleanup
 

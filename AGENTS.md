@@ -22,6 +22,8 @@ This project uses `task` (via Taskfile.yml) instead of `make` or `npm`. There is
 
 ### Testing
 - This is an infrastructure repo; "tests" are primarily validation checks and dry-runs.
+- Before committing, run `task test` or at minimum `infisical scan git-changes --staged --redact --no-color --exit-code 1`.
+- Never paste scan matches or secret values into chat; report only file, line, and rule.
 - **Kubernetes Validation:**
   - `kubectl apply --dry-run=client -f <manifest>`
   - `kubectl create secret generic <name> --dry-run=client -o yaml` (for secrets)

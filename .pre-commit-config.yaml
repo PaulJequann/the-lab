@@ -17,6 +17,6 @@ repos:
     hooks:
       - id: infisical-scan
         name: infisical scan git-changes
-        entry: infisical scan git-changes --staged --verbose
+        entry: infisical scan git-changes --staged --redact --no-color --exit-code 1
         language: system
         pass_filenames: false

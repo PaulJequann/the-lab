@@ -31,8 +31,8 @@ honcho_embedding_model: text-embedding-3-small
 honcho_embedding_vector_dimensions: 1536
 honcho_embedding_max_input_tokens: 8192
 honcho_embedding_max_tokens_per_request: 300000
-honcho_langfuse_host: 
-honcho_langfuse_public_key: 
+honcho_langfuse_host: ""
+honcho_langfuse_public_key: ""
 honcho_collect_metrics_local: False
 honcho_local_metrics_file: metrics.jsonl
 honcho_reasoning_traces_file: traces.jsonl
@@ -142,7 +142,7 @@ honcho_dream_surprisal_include_levels: ['explicit', 'deductive']
 honcho_metrics_enabled: False
 honcho_metrics_namespace: honcho
 honcho_telemetry_enabled: False
-honcho_telemetry_endpoint: 
+honcho_telemetry_endpoint: ""
 honcho_telemetry_namespace: honcho
 honcho_telemetry_batch_size: 100
 honcho_telemetry_flush_interval_seconds: 1.0
@@ -185,5 +185,5 @@ services_data_backup_nfs_server: truenas.local.bysliek.com
 services_data_backup_nfs_path: /mnt/k8s-ssd-pool/services-data-postgres-backups
 services_data_backup_retention_days: 14
 services_data_enable_glitchtip_db: True
-services_data_enable_infisical_db: False
+services_data_enable_infisical_db: True
 node_network: 10.0.10.0/24
