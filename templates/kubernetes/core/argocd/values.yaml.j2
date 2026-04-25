@@ -10,16 +10,6 @@ argo-cd:
       create: true
       admin.enabled: true
       application.instanceLabelKey: app.kubernetes.io/instance
-      resource.exclusions: |
-        - apiGroups:
-            - ""
-          kinds:
-            - Secret
-          clusters:
-            - "*"
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/managed-by: infisical-operator
     params:
       create: true
       server.insecure: {{ (argocd_insecure | default(false)) | tojson }}
